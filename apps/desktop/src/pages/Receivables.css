@@ -1,0 +1,25 @@
+.receivables-page { padding: 24px; }
+.page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+.page-header h2 { margin: 0; font-size: 24px; }
+.btn-primary { background: #3b82f6; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; }
+.btn-text { background: none; border: none; color: #3b82f6; cursor: pointer; padding: 4px 8px; }
+.summary-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 24px; }
+.summary-card { background: white; padding: 24px; border-radius: 12px; cursor: pointer; border: 2px solid transparent; transition: all 0.2s; }
+.summary-card:hover, .summary-card.active { border-color: #3b82f6; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15); }
+.card-title { font-size: 14px; color: #6b7280; margin-bottom: 8px; }
+.card-amount { font-size: 32px; font-weight: 600; }
+.card-amount.income { color: #10b981; }
+.card-amount.expense { color: #ef4444; }
+.card-count { font-size: 14px; color: #9ca3af; margin-top: 4px; }
+.table-container { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; }
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table th, .data-table td { padding: 14px 16px; text-align: left; border-bottom: 1px solid #e5e7eb; }
+.data-table th { background: #f9fafb; font-weight: 600; }
+.amount.income { color: #10b981; font-weight: 600; }
+.amount.expense { color: #ef4444; font-weight: 600; }
+.overdue { color: #ef4444; font-weight: 500; }
+.warning { color: #f59e0b; font-weight: 500; }
+.status-badge { padding: 4px 12px; border-radius: 20px; font-size: 12px; }
+.status-badge.normal { background: #d1fae5; color: #065f46; }
+.status-badge.warning { background: #fef3c7; color: #92400e; }
+.status-badge.overdue { background: #fee2e2; color: #991b1b; }

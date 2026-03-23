@@ -1,0 +1,30 @@
+# 财务管家 API 服务
+FROM node:20-alpine
+
+WORKDIR /app
+
+# 安装生产依赖和必要的工具
+RUN apk add --no-cache python3 make g++
+
+# 复制 package 文件
+COPY services/api/package*.json ./
+
+# 安装依赖
+RUN npm ci --only=production
+
+# 复制源代码
+COPY services/api/src ./src
+COPY services/api/scripts ./scripts
+
+# 创建数据目录
+RUN mkdir -p /app/data /app/uploads
+
+# 环境变量
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV DATABASE_PATH=/app/data/caiwu.db
+
+EXPOSE 3000
+
+# 启动命令
+CMD ["node", "src/index.js"]

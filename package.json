@@ -1,0 +1,31 @@
+{
+  "name": "caiwu",
+  "version": "1.0.0",
+  "description": "智能财务管理系统 - AI驱动的业财一体化解决方案",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "services/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:api\" \"npm run dev:desktop\"",
+    "dev:api": "npm run dev --workspace=@caiwu/api",
+    "dev:desktop": "npm run dev --workspace=@caiwu/desktop",
+    "dev:mobile": "npm run dev --workspace=@caiwu/mobile",
+    "dev:admin": "npm run dev --workspace=@caiwu/admin",
+    "build": "npm run build --workspaces",
+    "build:win": "npm run build:win --workspace=@caiwu/desktop",
+    "build:mac": "npm run build:mac --workspace=@caiwu/desktop",
+    "gateway": "npm run start --workspace=@caiwu/gateway"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "author": "Caiwu Team",
+  "license": "MIT"
+}

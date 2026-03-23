@@ -1,0 +1,11 @@
+node_modules/
+dist/
+dist-backend/
+.DS_Store
+*.log
+.env
+caiwu.db
+data/
+release/
+*.dmg
+release-package/*.dmg

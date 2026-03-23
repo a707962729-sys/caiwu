@@ -1,0 +1,40 @@
+{
+  "name": "caiwu-gateway",
+  "port": 18900,
+  "host": "127.0.0.1",
+  "serviceId": "caiwu",
+  "routes": {
+    "/api": {
+      "target": "http://localhost:3000",
+      "description": "API 服务"
+    },
+    "/ai": {
+      "target": "http://localhost:3001",
+      "description": "AI 服务",
+      "ws": true
+    }
+  },
+  "rateLimit": {
+    "enabled": true,
+    "windowMs": 60000,
+    "maxRequests": 100,
+    "skipPaths": ["/health", "/metrics"]
+  },
+  "logging": {
+    "enabled": true,
+    "level": "info",
+    "format": "pretty",
+    "logBody": false,
+    "logHeaders": true
+  },
+  "cors": {
+    "enabled": true,
+    "origins": ["*"],
+    "methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    "headers": ["Content-Type", "Authorization", "X-Request-ID"]
+  },
+  "timeout": {
+    "request": 30000,
+    "websocket": 86400000
+  }
+}

@@ -1,0 +1,14 @@
+.data-table-wrapper {
+  background: white;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.data-table-wrapper .ant-table-thead > tr > th {
+  background: #fafafa;
+  font-weight: 500;
+}
+
+.data-table-wrapper .ant-table-tbody > tr:hover > td {
+  background: #f5f5f5;
+}

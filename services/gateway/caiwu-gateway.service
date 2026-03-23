@@ -1,0 +1,28 @@
+[Unit]
+Description=caiwu-gateway - 财务管家 API Gateway
+Documentation=https://github.com/caiwu/gateway
+After=network.target
+
+[Service]
+Type=simple
+User=mac
+Group=staff
+WorkingDirectory=/Users/mac/Desktop/caiwu/services/gateway
+ExecStart=/usr/local/bin/node src/index.js
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+
+# 环境变量
+Environment=NODE_ENV=production
+
+# 日志
+StandardOutput=append:/Users/mac/Desktop/caiwu/services/gateway/logs/systemd.log
+StandardError=append:/Users/mac/Desktop/caiwu/services/gateway/logs/systemd-error.log
+
+# 资源限制
+LimitNOFILE=65535
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

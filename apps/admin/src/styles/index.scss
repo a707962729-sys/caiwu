@@ -1,0 +1,55 @@
+@use './variables.scss' as *;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+}
+
+#app {
+  width: 100%;
+  height: 100%;
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+// 滚动条样式
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c0c4cc;
+  border-radius: 3px;
+  
+  &:hover {
+    background: #909399;
+  }
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+// Element Plus 覆盖
+.el-button--primary {
+  background: $primary-gradient;
+  border: none;
+  
+  &:hover {
+    opacity: 0.9;
+  }
+}
+
+.el-menu {
+  border-right: none !important;
+}

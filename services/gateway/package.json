@@ -1,0 +1,32 @@
+{
+  "name": "caiwu-gateway",
+  "version": "1.0.0",
+  "description": "财务管家 API Gateway 服务",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "node test/test.js"
+  },
+  "keywords": [
+    "gateway",
+    "proxy",
+    "api",
+    "websocket",
+    "rate-limit"
+  ],
+  "author": "caiwu-team",
+  "license": "MIT",
+  "dependencies": {
+    "http-proxy": "^1.18.1",
+    "ws": "^8.16.0",
+    "pino": "^8.18.0",
+    "pino-pretty": "^10.3.0"
+  },
+  "devDependencies": {
+    "node-fetch": "^3.3.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
