@@ -67,6 +67,50 @@ router.put('/batch',
   })
 );
 
+
+// ==================== QQ 机器人配置 ====================
+
+/**
+ * @route   GET /api/settings/qqbot-config
+ * @desc    获取 QQ 机器人配置
+ */
+router.get('/qqbot-config',
+  asyncHandler(async (req, res) => {
+    const db = getDatabaseCompat();
+    const rows = db.prepare('SELECT key, value FROM settings WHERE key LIKE ? AND (company_id = ? OR company_id IS NULL)')
+      .all('qqbot.%', req.user.companyId || 1);
+    const config = {};
+    rows.forEach(r => { config[r.key.replace("qqbot.", "")] = r.value; });
+    res.json({ success: true, data: config });
+  })
+);
+
+/**
+ * @route   PUT /api/settings/qqbot-config
+ * @desc    保存 QQ 机器人配置
+ */
+router.put('/qqbot-config',
+  asyncHandler(async (req, res) => {
+    const db = getDatabaseCompat();
+    const cid = req.user.companyId || 1;
+    const { app_id, app_secret, enabled } = req.body;
+    const entries = [
+      ['qqbot.app_id', app_id || ''],
+      ['qqbot.app_secret', app_secret || ''],
+      ['qqbot.enabled', String(enabled ?? false)],
+    ];
+    for (const [key, value] of entries) {
+      const existing = db.prepare('SELECT id FROM settings WHERE key = ? AND (company_id = ? OR company_id IS NULL)').get(key, cid);
+      if (existing) {
+        db.prepare('UPDATE settings SET value = ? WHERE id = ?').run(value, existing.id);
+      } else {
+        db.prepare('INSERT INTO settings (company_id, key, value) VALUES (?, ?, ?)').run(cid, key, value);
+      }
+    }
+    res.json({ success: true, message: 'QQ 机器人配置已保存' });
+  })
+);
+
 /**
  * @route   GET /api/settings/:key
  * @desc    获取单个设置项

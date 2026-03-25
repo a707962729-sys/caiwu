@@ -275,38 +275,70 @@ const reimbursementSchemas = {
  */
 const invoiceSchemas = {
   create: Joi.object({
-    invoice_type: Joi.string().max(50).required(),
-    invoice_no: Joi.string().max(50).required(),
-    invoice_code: Joi.string().max(50).allow(''),
-    direction: Joi.string().valid('in', 'out').required(),
-    partner_id: Joi.number().integer().positive().allow(null),
-    contract_id: Joi.number().integer().positive().allow(null),
-    order_id: Joi.number().integer().positive().allow(null),
-    issue_date: Joi.date().iso().required(),
-    amount_before_tax: Joi.number().min(0).required(),
-    tax_rate: Joi.number().min(0).max(100).default(0),
-    tax_amount: Joi.number().min(0).default(0),
-    total_amount: Joi.number().min(0).required(),
-    currency: Joi.string().max(10).default('CNY'),
-    description: Joi.string().allow(''),
-    notes: Joi.string().allow('')
-  }),
-  
-  update: Joi.object({
+    // 兼容前端字段名（全部 optional，由 custom 验证器做最终校验）
     invoice_type: Joi.string().max(50),
-    invoice_code: Joi.string().max(50).allow(''),
+    type: Joi.string().max(50),
+    invoice_no: Joi.string().max(50).required(),
+    invoice_code: Joi.string().max(50).allow('', null),
+    direction: Joi.string().valid('in', 'out'),
+    type_dir: Joi.string().max(20),
     partner_id: Joi.number().integer().positive().allow(null),
     contract_id: Joi.number().integer().positive().allow(null),
     order_id: Joi.number().integer().positive().allow(null),
     issue_date: Joi.date().iso(),
+    invoice_date: Joi.date().iso(),
     amount_before_tax: Joi.number().min(0),
+    amount: Joi.number().min(0),
+    tax_rate: Joi.number().min(0).max(100).default(0),
+    tax_amount: Joi.number().min(0).default(0),
+    total_amount: Joi.number().min(0),
+    currency: Joi.string().max(10).default('CNY'),
+    description: Joi.string().allow('', null),
+    notes: Joi.string().allow('', null)
+  }).custom((obj, helpers) => {
+    // 字段标准化：前端字段 → 后端字段
+    const type = obj.invoice_type || obj.type;
+    const issueDate = obj.issue_date || obj.invoice_date;
+    const totalAmount = obj.total_amount ?? obj.amount;
+    const amtBeforeTax = obj.amount_before_tax ?? (totalAmount ? Math.round(totalAmount / 1.06 * 100) / 100 : 0);
+    const taxAmt = obj.tax_amount ?? (totalAmount ? Math.round(totalAmount - amtBeforeTax, 2) : 0);
+    const direction = obj.direction || obj.type_dir || 'in';
+
+    if (!type) return helpers.error('any.required', { message: '"invoice_type" is required' });
+    if (!issueDate) return helpers.error('any.required', { message: '"issue_date" is required' });
+    if (totalAmount === undefined || totalAmount === null) return helpers.error('any.required', { message: '"total_amount" is required' });
+
+    // 统一转 ISO 日期字符串
+    const issueDateStr = typeof issueDate === 'string' ? issueDate : issueDate.toISOString().slice(0, 10);
+    const taxRate = obj.tax_rate ?? (type?.startsWith('vat') ? 6 : 0);
+
+    obj._std = { invoice_type: type, issue_date: issueDateStr, total_amount: totalAmount, amount_before_tax: amtBeforeTax, tax_amount: taxAmt, direction, tax_rate: taxRate };
+    return obj;
+  }),
+
+  update: Joi.object({
+    invoice_type: Joi.string().max(50),
+    type: Joi.string().max(50),
+    invoice_code: Joi.string().max(50).allow('', null),
+    partner_id: Joi.number().integer().positive().allow(null),
+    contract_id: Joi.number().integer().positive().allow(null),
+    order_id: Joi.number().integer().positive().allow(null),
+    issue_date: Joi.date().iso(),
+    invoice_date: Joi.date().iso(),
+    amount_before_tax: Joi.number().min(0),
+    amount: Joi.number().min(0),
     tax_rate: Joi.number().min(0).max(100),
     tax_amount: Joi.number().min(0),
     total_amount: Joi.number().min(0),
     currency: Joi.string().max(10),
-    status: Joi.string().valid('pending', 'verified', 'used', 'cancelled'),
-    description: Joi.string().allow(''),
-    notes: Joi.string().allow('')
+    status: Joi.string().valid('pending', 'pending_review', 'verified', 'paid', 'cancelled'),
+    description: Joi.string().allow('', null),
+    notes: Joi.string().allow('', null)
+  }).custom((obj, helpers) => {
+    if (obj.type && !obj.invoice_type) obj.invoice_type = obj.type;
+    if (obj.invoice_date && !obj.issue_date) obj.issue_date = obj.invoice_date;
+    if (obj.amount !== undefined && obj.total_amount === undefined) obj.total_amount = obj.amount;
+    return obj;
   })
 };
 

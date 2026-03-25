@@ -16,10 +16,10 @@ router.get('/',
     const companyId = req.user.companyId;
     
     const departments = db.prepare(`
-      SELECT id, dept_name as name, parent_id, level, sort_order, status
+      SELECT id, name, parent_id, level, status
       FROM departments
       WHERE company_id = ? AND status = 'active'
-      ORDER BY sort_order, id
+      ORDER BY id
     `).all(companyId);
     
     res.json({ success: true, data: departments || [] });

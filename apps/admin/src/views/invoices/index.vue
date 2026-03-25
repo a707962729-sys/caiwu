@@ -129,7 +129,7 @@
         </el-table-column>
         <el-table-column prop="total_amount" label="金额" width="130" align="right">
           <template #default="{ row }">
-            <span class="amount">{{ formatMoney(row.amount) }}</span>
+            <span class="amount">{{ formatMoney(row.total_amount) }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="issue_date" label="日期" width="110" align="center">

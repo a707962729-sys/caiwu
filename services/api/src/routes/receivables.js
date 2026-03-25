@@ -19,17 +19,17 @@ router.get('/',
     const db = getDatabaseCompat();
     const { page = 1, pageSize = 20, search, partner_id, status, start_date, end_date, overdue } = req.query;
     const companyId = req.user.companyId;
-    
+
     let whereClause = 'WHERE r.company_id = ? AND r.type = ?';
-    const params = [companyId, 'receivable'];
+    const params = [companyId || 1, 'receivable'];
     
     if (search) {
-      whereClause += ' AND (r.rp_no LIKE ? OR p.name LIKE ?)';
+      whereClause += ' AND (r.rp_no LIKE ? OR r.partner_name LIKE ?)';
       params.push(`%${search}%`, `%${search}%`);
     }
     
     if (partner_id) {
-      whereClause += ' AND r.partner_id = ?';
+      whereClause += ' AND r.partner_name = ?';
       params.push(partner_id);
     }
     
@@ -51,22 +51,21 @@ router.get('/',
     if (overdue === 'true' || overdue === true) {
       whereClause += " AND r.status IN ('pending', 'partial') AND r.due_date < date('now')";
     }
-    
+
     // 统计
     const countResult = db.prepare(`SELECT COUNT(*) as total FROM receivables_payables r ${whereClause}`).get(...params);
     const total = countResult.total;
-    
+
     // 查询
     const offset = (page - 1) * pageSize;
     const list = db.prepare(`
-      SELECT r.*, p.name as partner_name
+      SELECT r.*
       FROM receivables_payables r
-      LEFT JOIN partners p ON r.partner_id = p.id
       ${whereClause}
       ORDER BY r.due_date ASC
       LIMIT ? OFFSET ?
     `).all(...params, pageSize, offset);
-    
+
     res.json({
       success: true,
       data: {
@@ -86,9 +85,9 @@ router.get('/stats',
   asyncHandler(async (req, res) => {
     const db = getDatabaseCompat();
     const companyId = req.user.companyId;
-    
+
     const stats = db.prepare(`
-      SELECT 
+      SELECT
         COUNT(*) as total_count,
         SUM(amount) as total_amount,
         SUM(paid_amount) as received_amount,
@@ -96,8 +95,8 @@ router.get('/stats',
         SUM(CASE WHEN status = 'overdue' THEN remaining_amount ELSE 0 END) as overdue_amount
       FROM receivables_payables
       WHERE company_id = ? AND type = 'receivable'
-    `).get(companyId);
-    
+    `).get(companyId || 1);
+
     res.json({ success: true, data: stats });
   })
 );
@@ -111,11 +110,11 @@ router.get('/aging',
   asyncHandler(async (req, res) => {
     const db = getDatabaseCompat();
     const companyId = req.user.companyId;
-    
+
     // 简化的账龄分析
     const byPeriod = db.prepare(`
-      SELECT 
-        CASE 
+      SELECT
+        CASE
           WHEN julianday('now') - julianday(due_date) < 0 THEN '未到期'
           WHEN julianday('now') - julianday(due_date) < 30 THEN '0-30天'
           WHEN julianday('now') - julianday(due_date) < 60 THEN '30-60天'
@@ -127,8 +126,8 @@ router.get('/aging',
       FROM receivables_payables
       WHERE company_id = ? AND type = 'receivable' AND status IN ('pending', 'partial')
       GROUP BY period
-    `).all(companyId);
-    
+    `).all(companyId || 1);
+
     res.json({ success: true, data: { by_period: byPeriod } });
   })
 );
@@ -144,18 +143,17 @@ router.get('/:id',
     const db = getDatabaseCompat();
     const { id } = req.params;
     const companyId = req.user.companyId;
-    
+
     const receivable = db.prepare(`
-      SELECT r.*, p.name as partner_name
+      SELECT r.*
       FROM receivables_payables r
-      LEFT JOIN partners p ON r.partner_id = p.id
       WHERE r.id = ? AND r.company_id = ? AND r.type = 'receivable'
     `).get(id, companyId);
-    
+
     if (!receivable) {
       throw ErrorTypes.NotFound('应收账款');
     }
-    
+
     res.json({ success: true, data: receivable });
   })
 );
@@ -169,19 +167,15 @@ router.post('/',
   asyncHandler(async (req, res) => {
     const db = getDatabaseCompat();
     const companyId = req.user.companyId;
-    const { partner_id, order_id, amount, due_date, transaction_date, remark } = req.body;
-    
-    // 生成编号
-    const today = dayjs().format('YYYYMMDD');
-    const count = db.prepare(`SELECT COUNT(*) as count FROM receivables_payables WHERE company_id = ? AND type = 'receivable' AND created_at >= date('now')`).get(companyId);
-    const rp_no = `AR${today}${(count.count + 1).toString().padStart(4, '0')}`;
-    
+    const { partner_name, amount, remark } = req.body;
+    const cid = companyId || 1;
+
     const result = db.prepare(`
-      INSERT INTO receivables_payables (company_id, type, rp_no, partner_id, order_id, amount, paid_amount, remaining_amount, due_date, transaction_date, status, notes, created_by, created_at, updated_at)
-      VALUES (?, 'receivable', ?, ?, ?, ?, 0, ?, ?, ?, 'pending', ?, ?, datetime('now'), datetime('now'))
-    `).run(companyId, rp_no, partner_id, order_id || null, amount, amount, due_date, transaction_date || dayjs().format('YYYY-MM-DD'), remark || null, req.user.id);
-    
-    res.json({ success: true, data: { id: result.lastInsertRowid, rp_no } });
+      INSERT INTO receivables_payables (company_id, type, partner_name, amount, paid_amount, remaining_amount, status, notes)
+      VALUES (?, 'receivable', ?, ?, 0, ?, 'pending', ?)
+    `).run(cid, partner_name || null, amount, amount, remark || null);
+
+    res.json({ success: true, data: { id: result.lastInsertRowid } });
   })
 );
 
@@ -197,24 +191,24 @@ router.post('/:id/receive',
     const { id } = req.params;
     const { amount, payment_method, payment_date, account_no, voucher_no, remark } = req.body;
     const companyId = req.user.companyId;
-    
+
     // 获取当前应收
     const receivable = db.prepare(`SELECT * FROM receivables_payables WHERE id = ? AND company_id = ? AND type = 'receivable'`).get(id, companyId);
     if (!receivable) {
       throw ErrorTypes.NotFound('应收账款');
     }
-    
+
     // 更新收款
     const newPaidAmount = receivable.paid_amount + amount;
     const newRemainingAmount = receivable.amount - newPaidAmount;
     const newStatus = newRemainingAmount <= 0 ? 'settled' : (newPaidAmount > 0 ? 'partial' : 'pending');
-    
+
     db.prepare(`
-      UPDATE receivables_payables 
+      UPDATE receivables_payables
       SET paid_amount = ?, remaining_amount = ?, status = ?, updated_at = datetime('now')
       WHERE id = ?
     `).run(newPaidAmount, newRemainingAmount, newStatus, id);
-    
+
     res.json({ success: true, data: { paid_amount: newPaidAmount, remaining_amount: newRemainingAmount, status: newStatus } });
   })
 );

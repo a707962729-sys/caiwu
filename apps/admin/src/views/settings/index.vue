@@ -306,6 +306,29 @@
         <el-tab-pane label="报销标准" name="reimbursement">
           <ReimbursementStandards />
         </el-tab-pane>
+
+        <!-- QQ 机器人配置 -->
+        <el-tab-pane label="QQ机器人" name="qqbot">
+          <div class="tab-content">
+            <el-alert type="info" :closable="false" style="margin-bottom: 16px">
+              请前往 <a href="https://q.qq.com" target="_blank">QQ开放平台</a> 创建机器人，获取 AppID 和 AppSecret 后填入下方配置。
+            </el-alert>
+            <el-form :model="qqbotForm" label-width="120px" style="max-width: 600px">
+              <el-form-item label="AppID">
+                <el-input v-model="qqbotForm.appId" placeholder="机器人 AppID，如 102000123" />
+              </el-form-item>
+              <el-form-item label="AppSecret">
+                <el-input v-model="qqbotForm.appSecret" placeholder="机器人 AppSecret" show-password />
+              </el-form-item>
+              <el-form-item label="启用机器人">
+                <el-switch v-model="qqbotForm.enabled" />
+              </el-form-item>
+              <el-form-item>
+                <el-button type="primary" :loading="qqbotSaving" @click="saveQQBotConfig">保存配置</el-button>
+              </el-form-item>
+            </el-form>
+          </div>
+        </el-tab-pane>
       </el-tabs>
     </el-card>
 
@@ -414,6 +437,43 @@ const configForm = reactive({
   session_timeout: 30,
   password_expire: 90
 })
+
+// QQ 机器人配置
+const qqbotForm = reactive({
+  appId: '',
+  appSecret: '',
+  enabled: false
+})
+const qqbotSaving = ref(false)
+
+const loadQQBotConfig = async () => {
+  try {
+    const res = await request.get('/api/qq-bot/config')
+    const d = res.data || {}
+    qqbotForm.appId = d.appId || ''
+    qqbotForm.appSecret = d.appSecret || ''
+    qqbotForm.enabled = d.enabled === true
+  } catch (e) {
+    console.error('加载QQ机器人配置失败', e)
+  }
+}
+
+const saveQQBotConfig = async () => {
+  qqbotSaving.value = true
+  try {
+    await request.post('/api/qq-bot/config', {
+      appId: qqbotForm.appId,
+      appSecret: qqbotForm.appSecret,
+      enabled: qqbotForm.enabled
+    })
+    ElMessage.success('QQ 机器人配置已保存')
+  } catch (e) {
+    console.error('保存QQ机器人配置失败', e)
+    ElMessage.error('保存失败')
+  } finally {
+    qqbotSaving.value = false
+  }
+}
 
 const loadConfig = async () => {
   configLoading.value = true
@@ -834,6 +894,7 @@ onMounted(() => {
   loadDictList()
   loadCompany()
   loadAllCategoryCounts()
+  loadQQBotConfig()
   loadCategoryList()
 })
 </script>

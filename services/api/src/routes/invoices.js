@@ -78,8 +78,9 @@ router.get('/',
     const companyId = req.user.companyId;
     
     // 处理 company_id 为 null 的情况
-    let whereClause = companyId ? 'WHERE i.company_id = ?' : 'WHERE (i.company_id IS NULL OR i.company_id = 0)';
-    const params = companyId ? [companyId] : [];
+    const cid = companyId || 1;
+    let whereClause = 'WHERE i.company_id = ?';
+    const params = [cid];
     
     if (search) {
       whereClause += ' AND (i.invoice_no LIKE ? OR i.invoice_code LIKE ?)';
@@ -150,10 +151,10 @@ router.get('/stats',
   asyncHandler(async (req, res) => {
     const db = getDatabaseCompat();
     const { startDate, endDate } = req.query;
-    const companyId = req.user.companyId;
+    const cid = req.user.companyId || 1;
     
     let whereClause = 'WHERE company_id = ?';
-    const params = [companyId];
+    const params = [cid];
     
     if (startDate) {
       whereClause += ' AND issue_date >= ?';
@@ -229,30 +230,16 @@ router.get('/:id',
   validateId('id'),
   asyncHandler(async (req, res) => {
     const db = getDatabaseCompat();
-    
-    const companyId = req.user.companyId;
-    let invoice;
-    
-    if (companyId) {
-      invoice = db.prepare(`
-        SELECT i.*, p.name as partner_name, c.name as contract_name, o.name as order_name
-        FROM invoices i
-        LEFT JOIN partners p ON i.partner_id = p.id
-        LEFT JOIN contracts c ON i.contract_id = c.id
-        LEFT JOIN orders o ON i.order_id = o.id
-        WHERE i.id = ? AND i.company_id = ?
-      `).get(req.params.id, companyId);
-    } else {
-      // company_id 为 null 时，查询所有公司或无公司的发票
-      invoice = db.prepare(`
-        SELECT i.*, p.name as partner_name, c.name as contract_name, o.name as order_name
-        FROM invoices i
-        LEFT JOIN partners p ON i.partner_id = p.id
-        LEFT JOIN contracts c ON i.contract_id = c.id
-        LEFT JOIN orders o ON i.order_id = o.id
-        WHERE i.id = ? AND (i.company_id IS NULL OR i.company_id = 0)
-      `).get(req.params.id);
-    }
+    const cid = req.user.companyId || 1;
+
+    const invoice = db.prepare(`
+      SELECT i.*, p.name as partner_name, c.name as contract_name, o.name as order_name
+      FROM invoices i
+      LEFT JOIN partners p ON i.partner_id = p.id
+      LEFT JOIN contracts c ON i.contract_id = c.id
+      LEFT JOIN orders o ON i.order_id = o.id
+      WHERE i.id = ? AND i.company_id = ?
+    `).get(req.params.id, cid);
     
     if (!invoice) {
       throw ErrorTypes.NotFound('票据');
@@ -271,13 +258,15 @@ router.post('/',
   validate(invoiceSchemas.create),
   asyncHandler(async (req, res) => {
     const db = getDatabaseCompat();
-    const companyId = req.user.companyId;
-    
-    const existing = db.prepare('SELECT id FROM invoices WHERE company_id = ? AND invoice_no = ?').get(companyId, req.body.invoice_no);
+    const companyId = req.user.companyId || 1;
+    const body = req.body;
+    const std = body._std || {};
+
+    const existing = db.prepare('SELECT id FROM invoices WHERE company_id = ? AND invoice_no = ?').get(companyId || 1, body.invoice_no);
     if (existing) {
       throw ErrorTypes.DuplicateEntry('发票号码');
     }
-    
+
     const result = db.prepare(`
       INSERT INTO invoices (
         company_id, invoice_type, invoice_no, invoice_code, direction,
@@ -285,18 +274,18 @@ router.post('/',
         tax_rate, tax_amount, total_amount, currency, description, notes, created_by
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      companyId, req.body.invoice_type, req.body.invoice_no, req.body.invoice_code || null,
-      req.body.direction, req.body.partner_id || null, req.body.contract_id || null,
-      req.body.order_id || null, req.body.issue_date, req.body.amount_before_tax,
-      req.body.tax_rate || 0, req.body.tax_amount || 0, req.body.total_amount,
-      req.body.currency, req.body.description || null, req.body.notes || null, req.user.id
+      companyId, std.invoice_type, body.invoice_no, body.invoice_code || null,
+      std.direction, body.partner_id || null, body.contract_id || null,
+      body.order_id || null, std.issue_date, std.amount_before_tax,
+      body.tax_rate || 0, std.tax_amount, std.total_amount,
+      body.currency, body.description || null, body.notes || null, req.user.id
     );
-    
+
     const newInvoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(result.lastInsertRowid);
-    
+
     // 记录审计日志
-    AuditLog.create(req.user.id, AuditLog.MODULES.INVOICES, result.lastInsertRowid, newInvoice, req);
-    
+    AuditLogger.logCreate('invoices', result.lastInsertRowid, newInvoice, req);
+
     res.status(201).json({ success: true, data: newInvoice, message: '票据创建成功' });
   })
 );
@@ -313,11 +302,17 @@ router.put('/:id',
     const { id } = req.params;
     const db = getDatabaseCompat();
     
-    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ? AND company_id = ?').get(id, req.user.companyId);
+    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ? AND company_id = ?').get(id, req.user.companyId || 1);
     if (!invoice) {
       throw ErrorTypes.NotFound('票据');
     }
     
+    // 字段标准化：适配前端发送的字段名
+    const body = { ...req.body };
+    if ('type' in body) { body.invoice_type = body.type; delete body.type; }
+    if ('amount' in body) { body.total_amount = body.amount; delete body.amount; }
+    if ('invoice_date' in body) { body.issue_date = body.invoice_date; delete body.invoice_date; }
+
     const updates = [];
     const values = [];
     const allowedFields = [
@@ -326,7 +321,7 @@ router.put('/:id',
       'currency', 'status', 'description', 'notes'
     ];
     
-    for (const [key, value] of Object.entries(req.body)) {
+    for (const [key, value] of Object.entries(body)) {
       if (allowedFields.includes(key) && value !== undefined) {
         updates.push(`${key} = ?`);
         values.push(value);
@@ -343,7 +338,7 @@ router.put('/:id',
     const updatedInvoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(id);
     
     // 记录审计日志
-    AuditLog.update(req.user.id, AuditLog.MODULES.INVOICES, id, invoice, updatedInvoice, req);
+    AuditLogger.logUpdate('invoices', id, invoice, updatedInvoice, req);
     
     res.json({ success: true, data: updatedInvoice, message: '票据更新成功' });
   })
@@ -359,7 +354,7 @@ router.post('/:id/verify',
   asyncHandler(async (req, res) => {
     const db = getDatabaseCompat();
     
-    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ? AND company_id = ?').get(req.params.id, req.user.companyId);
+    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ? AND company_id = ?').get(req.params.id, req.user.companyId || 1);
     if (!invoice) {
       throw ErrorTypes.NotFound('票据');
     }
@@ -422,7 +417,7 @@ router.delete('/:id',
   asyncHandler(async (req, res) => {
     const db = getDatabaseCompat();
     
-    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ? AND company_id = ?').get(req.params.id, req.user.companyId);
+    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ? AND company_id = ?').get(req.params.id, req.user.companyId || 1);
     if (!invoice) {
       throw ErrorTypes.NotFound('票据');
     }

@@ -3,6 +3,26 @@ const path = require('path');
 // 加载环境变量
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
+// 先定义 providers（IIFE 需要提前引用）
+const providers = {
+  openai: {
+    apiKey: process.env.OPENAI_API_KEY || '',
+    baseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
+    model: process.env.OPENAI_MODEL || 'gpt-4o',
+    enabled: !!process.env.OPENAI_API_KEY
+  },
+  anthropic: {
+    apiKey: process.env.ANTHROPIC_API_KEY || '',
+    model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514',
+    enabled: !!process.env.ANTHROPIC_API_KEY
+  },
+  ollama: {
+    baseUrl: process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
+    model: process.env.OLLAMA_MODEL || 'llama3.2',
+    enabled: process.env.OLLAMA_ENABLED === 'true' || false
+  }
+};
+
 const config = {
   // 服务配置
   service: {
@@ -24,24 +44,7 @@ const config = {
   },
 
   // AI 提供商配置
-  providers: {
-    openai: {
-      apiKey: process.env.OPENAI_API_KEY || '',
-      baseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
-      model: process.env.OPENAI_MODEL || 'gpt-4o',
-      enabled: !!process.env.OPENAI_API_KEY
-    },
-    anthropic: {
-      apiKey: process.env.ANTHROPIC_API_KEY || '',
-      model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514',
-      enabled: !!process.env.ANTHROPIC_API_KEY
-    },
-    ollama: {
-      baseUrl: process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
-      model: process.env.OLLAMA_MODEL || 'llama3.2',
-      enabled: process.env.OLLAMA_ENABLED === 'true' || false
-    }
-  },
+  providers,
 
   // OCR 配置
   ocr: {
@@ -80,9 +83,9 @@ const config = {
   // 默认 AI 模型优先级
   defaultModel: (() => {
     if (process.env.DEFAULT_MODEL) return process.env.DEFAULT_MODEL;
-    if (config.providers.openai.enabled) return 'openai';
-    if (config.providers.anthropic.enabled) return 'anthropic';
-    if (config.providers.ollama.enabled) return 'ollama';
+    if (providers.openai.enabled) return 'openai';
+    if (providers.anthropic.enabled) return 'anthropic';
+    if (providers.ollama.enabled) return 'ollama';
     return 'mock'; // 回退到模拟模式
   })()
 };
