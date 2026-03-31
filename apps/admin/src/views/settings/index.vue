@@ -313,6 +313,28 @@
             <el-alert type="info" :closable="false" style="margin-bottom: 16px">
               请前往 <a href="https://q.qq.com" target="_blank">QQ开放平台</a> 创建机器人，获取 AppID 和 AppSecret 后填入下方配置。
             </el-alert>
+
+            <!-- 连接状态卡片 -->
+            <el-card shadow="never" style="margin-bottom: 20px; max-width: 600px">
+              <template #header>
+                <div class="card-header">
+                  <span>WebSocket 连接状态</span>
+                  <el-button text type="primary" :icon="Refresh" :loading="wsLoading" @click="loadWsStatus">
+                    刷新
+                  </el-button>
+                </div>
+              </template>
+              <div class="ws-status">
+                <el-tag :type="wsStatus === 'connected' ? 'success' : wsStatus === 'connecting' ? 'warning' : 'danger'" size="large">
+                  <el-icon class="status-icon">
+                    <component :is="wsStatus === 'connected' ? 'CircleCheck' : wsStatus === 'connecting' ? 'Loading' : 'CircleClose'" />
+                  </el-icon>
+                  {{ wsStatusText }}
+                </el-tag>
+                <span v-if="wsConnectedTime" class="connected-time">已连接 {{ wsConnectedTime }}</span>
+              </div>
+            </el-card>
+
             <el-form :model="qqbotForm" label-width="120px" style="max-width: 600px">
               <el-form-item label="AppID">
                 <el-input v-model="qqbotForm.appId" placeholder="机器人 AppID，如 102000123" />
@@ -415,14 +437,24 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, Refresh, CircleCheck, CircleClose, Loading } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { dictApi, companyApi, configApi, type DictItem, type DictType, type CompanyInfo, type SystemConfig } from '@/api/dict'
+import request from '@/api/request'
 import ReimbursementStandards from './ReimbursementStandards.vue'
 
 // Tab 状态
 const activeTab = ref('system')
+const route = useRoute()
+
+// 监听路由 query 参数，自动切换到对应 tab
+watch(() => route.query.tab, (tab) => {
+  if (tab === 'qqbot') {
+    activeTab.value = 'qqbot'
+  }
+}, { immediate: true })
 
 // ==================== 系统参数配置 ====================
 const configLoading = ref(false)
@@ -446,13 +478,41 @@ const qqbotForm = reactive({
 })
 const qqbotSaving = ref(false)
 
+// WebSocket 连接状态
+const wsStatus = ref<'connected' | 'connecting' | 'disconnected'>('disconnected')
+const wsConnectedTime = ref('')
+const wsLoading = ref(false)
+
+const wsStatusText = computed(() => {
+  const map = {
+    connected: '已连接',
+    connecting: '连接中...',
+    disconnected: '未连接'
+  }
+  return map[wsStatus.value]
+})
+
+const loadWsStatus = async () => {
+  wsLoading.value = true
+  try {
+    const data = (await request.get('/qqbot/ws-status')) || {}
+    wsStatus.value = (data.ws && data.ws.connected) ? 'connected' : 'disconnected'
+    wsConnectedTime.value = (data.ws && data.ws.connectedAt) ? new Date(data.ws.connectedAt).toLocaleString() : ''
+  } catch (e) {
+    console.error('获取WebSocket状态失败', e)
+    wsStatus.value = 'disconnected'
+    wsConnectedTime.value = ''
+  } finally {
+    wsLoading.value = false
+  }
+}
+
 const loadQQBotConfig = async () => {
   try {
-    const res = await request.get('/api/qq-bot/config')
-    const d = res.data || {}
-    qqbotForm.appId = d.appId || ''
-    qqbotForm.appSecret = d.appSecret || ''
-    qqbotForm.enabled = d.enabled === true
+    const d = (await request.get('/settings/qqbot-config')) || {}
+    qqbotForm.appId = d.app_id || ''
+    qqbotForm.appSecret = d.app_secret || ''
+    qqbotForm.enabled = d.enabled === true || d.enabled === 'true' || d.enabled === 1
   } catch (e) {
     console.error('加载QQ机器人配置失败', e)
   }
@@ -461,9 +521,9 @@ const loadQQBotConfig = async () => {
 const saveQQBotConfig = async () => {
   qqbotSaving.value = true
   try {
-    await request.post('/api/qq-bot/config', {
-      appId: qqbotForm.appId,
-      appSecret: qqbotForm.appSecret,
+    await request.put('/settings/qqbot-config', {
+      app_id: qqbotForm.appId,
+      app_secret: qqbotForm.appSecret,
       enabled: qqbotForm.enabled
     })
     ElMessage.success('QQ 机器人配置已保存')
@@ -896,6 +956,7 @@ onMounted(() => {
   loadAllCategoryCounts()
   loadQQBotConfig()
   loadCategoryList()
+  loadWsStatus()
 })
 </script>
 
@@ -1020,6 +1081,27 @@ onMounted(() => {
 
   .category-name {
     font-weight: 500;
+  }
+
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .ws-status {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .status-icon {
+    margin-right: 4px;
+  }
+
+  .connected-time {
+    font-size: 13px;
+    color: #909399;
   }
 
   :deep(.el-divider__text) {

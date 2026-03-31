@@ -41,7 +41,7 @@ router.put('/batch',
     const { configs } = req.body;
     
     if (!Array.isArray(configs) || configs.length === 0) {
-      throw ErrorTypes.VALIDATION_ERROR('配置项列表不能为空');
+      throw ErrorTypes.ValidationError('配置项列表不能为空');
     }
     
     const results = [];
@@ -108,6 +108,12 @@ router.put('/qqbot-config',
       }
     }
     res.json({ success: true, message: 'QQ 机器人配置已保存' });
+    
+    // 触发 QQBot 重新连接（如果配置变更）
+    const { checkAndReconnectIfNeeded } = require('../qqbot-ws');
+    checkAndReconnectIfNeeded().catch(err => {
+      console.error('[qqbot-ws] Error checking/reconnecting:', err.message);
+    });
   })
 );
 
@@ -123,7 +129,7 @@ router.get('/:key',
     
     const setting = db.prepare('SELECT * FROM settings WHERE key = ? AND (company_id = ? OR company_id IS NULL)').get(req.params.key, companyId);
     if (!setting) {
-      throw ErrorTypes.NOT_FOUND('设置项不存在');
+      throw ErrorTypes.NotFound('设置项不存在');
     }
     
     res.json({ success: true, data: setting });
@@ -142,7 +148,7 @@ router.post('/',
     const { key, value } = req.body;
     
     if (!key) {
-      throw ErrorTypes.VALIDATION_ERROR('设置键不能为空');
+      throw ErrorTypes.ValidationError('设置键不能为空');
     }
     
     // 检查是否已存在
@@ -174,7 +180,7 @@ router.put('/:key',
     
     const existing = db.prepare('SELECT * FROM settings WHERE key = ? AND (company_id = ? OR company_id IS NULL)').get(req.params.key, companyId);
     if (!existing) {
-      throw ErrorTypes.NOT_FOUND('设置项不存在');
+      throw ErrorTypes.NotFound('设置项不存在');
     }
     
     db.prepare('UPDATE settings SET value = ? WHERE id = ?').run(value, existing.id);
@@ -196,7 +202,7 @@ router.delete('/:key',
     
     const existing = db.prepare('SELECT * FROM settings WHERE key = ? AND (company_id = ? OR company_id IS NULL)').get(req.params.key, companyId);
     if (!existing) {
-      throw ErrorTypes.NOT_FOUND('设置项不存在');
+      throw ErrorTypes.NotFound('设置项不存在');
     }
     
     db.prepare('DELETE FROM settings WHERE id = ?').run(existing.id);

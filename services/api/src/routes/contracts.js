@@ -5,7 +5,7 @@ const { getDatabaseCompat } = require('../database');
 const { authMiddleware, permissionMiddleware } = require('../middleware/auth');
 const { ErrorTypes, asyncHandler } = require('../middleware/error');
 const { validate, validateId, paginationSchema, contractSchemas } = require('../middleware/validation');
-const { AuditLog } = require('../middleware/audit');
+const { AuditLogger } = require('../middleware/audit');
 
 router.use(authMiddleware);
 
@@ -220,7 +220,7 @@ router.post('/',
     `).get(result.lastInsertRowid);
     
     // 记录审计日志
-    AuditLog.create(req.user.id, AuditLog.MODULES.CONTRACTS, result.lastInsertRowid, newContract, req);
+    AuditLogger.logCreate('contracts', result.lastInsertRowid, newContract, req);
     
     res.status(201).json({ success: true, data: newContract, message: '合同创建成功' });
   })
@@ -264,7 +264,7 @@ router.put('/:id',
     
     const updates = [];
     const values = [];
-    const allowedFields = ['name', 'partner_id', 'contract_type', 'amount', 'currency', 'start_date', 'end_date', 'sign_date', 'responsible_user_id', 'status', 'payment_terms', 'terms_and_conditions', 'notes'];
+    const allowedFields = ['name', 'partner_id', 'party_a_partner_id', 'party_b_partner_id', 'contract_type', 'contract_category', 'amount', 'currency', 'start_date', 'end_date', 'sign_date', 'responsible_user_id', 'status', 'payment_terms', 'terms_and_conditions', 'notes', 'is_ai_reviewed'];
     
     for (const [key, value] of Object.entries(req.body)) {
       if (allowedFields.includes(key) && value !== undefined) {
@@ -283,7 +283,7 @@ router.put('/:id',
     const updatedContract = db.prepare('SELECT * FROM contracts WHERE id = ?').get(id);
     
     // 记录审计日志
-    AuditLog.update(req.user.id, AuditLog.MODULES.CONTRACTS, id, contract, updatedContract, req);
+    AuditLogger.logUpdate('contracts', id, contract, updatedContract, req);
     
     res.json({ success: true, data: updatedContract, message: '合同更新成功' });
   })
@@ -313,7 +313,7 @@ router.delete('/:id',
     db.prepare('DELETE FROM contracts WHERE id = ?').run(req.params.id);
     
     // 记录审计日志
-    AuditLog.delete(req.user.id, AuditLog.MODULES.CONTRACTS, req.params.id, contract, req);
+    AuditLogger.logDelete('contracts', req.params.id, contract, req);
     
     res.json({ success: true, message: '合同已删除' });
   })

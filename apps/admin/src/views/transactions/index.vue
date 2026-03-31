@@ -270,6 +270,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { 
   Plus, Download, Search, TrendCharts, Minus, Wallet 
@@ -279,6 +280,9 @@ import type { FormInstance, FormRules } from 'element-plus'
 import dayjs from 'dayjs'
 import quarterOfYear from 'dayjs/plugin/quarterOfYear'
 dayjs.extend(quarterOfYear)
+
+// 路由
+const route = useRoute()
 
 // 加载状态
 const loading = ref(false)
@@ -717,6 +721,14 @@ onMounted(() => {
   dateRange.value = [start, end]
   filterForm.startDate = start
   filterForm.endDate = end
+
+  // 如果 URL 有 ?action=create，打开新建弹窗
+  if (route.query.action === 'create') {
+    resetForm()
+    formData.transaction_type = (route.query.type as 'income' | 'expense' | 'transfer') || 'expense'
+    formData.transaction_date = dayjs().format('YYYY-MM-DD')
+    dialogVisible.value = true
+  }
   
   loadCategories()
   loadData()

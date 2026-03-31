@@ -35,7 +35,7 @@ class InvoiceProcessor {
       }
     } else if (['.png', '.jpg', '.jpeg', '.webp'].includes(ext)) {
       // 图片直接用AI视觉模型识别
-      invoiceData = await this.extractFromImage(filePath);
+      invoiceData = await this.extractFromImage(filePath, userId);
     } else {
       throw new Error('不支持的文件格式，请发送PDF或图片(PNG/JPG/WEBP)');
     }
@@ -68,7 +68,7 @@ class InvoiceProcessor {
   /**
    * 从图片提取发票信息（使用AI视觉模型）
    */
-  async extractFromImage(filePath) {
+  async extractFromImage(filePath, userId) {
     const imageBuffer = fs.readFileSync(filePath);
     const ext = path.extname(filePath).toLowerCase();
     
@@ -85,9 +85,19 @@ class InvoiceProcessor {
     const dataUrl = `data:${mimeType};base64,${imageBase64}`;
     
     console.log('使用AI视觉模型识别发票...');
-    
-    // 调用AI视觉模型识别
-    const result = await aiGateway.recognizeInvoice(dataUrl);
+
+    // 调用AI视觉模型识别（从文件路径获取用户信息）
+    const db = getDatabaseCompat();
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+    const jwt = require('jsonwebtoken');
+    const config = require('../config');
+    const userToken = user ? jwt.sign(
+      { id: user.id, companyId: user.company_id, roleName: user.role_name },
+      config.jwt.secret,
+      { expiresIn: '1h' }
+    ) : null;
+
+    const result = await aiGateway.recognizeInvoice(dataUrl, userToken);
     
     if (result.success) {
       try {

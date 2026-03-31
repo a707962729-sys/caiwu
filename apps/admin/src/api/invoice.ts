@@ -93,6 +93,8 @@ function mapInvoiceFromBackend(backend: BackendInvoice): Invoice {
     tax_amount: backend.tax_amount,
     invoice_date: backend.issue_date,
     status: mapInvoiceStatus(backend.status),
+    issuer: backend.seller_name || backend.buyer_name,  // 显示卖方或买方
+    payer: backend.buyer_name || backend.seller_name,     // 显示买方或卖方
     seller_name: backend.seller_name,
     buyer_name: backend.buyer_name,
     description: backend.description,
@@ -146,13 +148,28 @@ export const invoiceApi = {
   },
 
   // 创建票据
+  // 字段映射：前端 -> 后端
+  toBackend(data: any): any {
+    return {
+      invoice_no: data.invoice_no,
+      invoice_type: data.type,
+      amount_before_tax: data.amount,
+      issue_date: data.invoice_date,
+      status: data.status,
+      seller_name: data.issuer,
+      buyer_name: data.payer,
+      description: data.description,
+      attachment: data.attachment
+    }
+  },
+
   create(data: InvoiceCreateParams): Promise<Invoice> {
-    return request.post('/invoices', data)
+    return request.post('/invoices', this.toBackend(data))
   },
 
   // 更新票据
   update(id: number, data: InvoiceUpdateParams): Promise<Invoice> {
-    return request.put(`/invoices/${id}`, data)
+    return request.put(`/invoices/${id}`, this.toBackend(data))
   },
 
   // 删除票据

@@ -31,4 +31,5 @@ export {
   type CategoryData as ReportCategoryData 
 } from './reports'
 
+export * from './ai'
 export { default as request } from './request'

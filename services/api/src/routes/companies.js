@@ -19,12 +19,12 @@ router.get('/current',
     const companyId = req.user.companyId;
     
     if (!companyId) {
-      throw ErrorTypes.NOT_FOUND('用户未关联公司');
+      throw ErrorTypes.NotFound('用户未关联公司');
     }
     
     const company = db.prepare('SELECT * FROM companies WHERE id = ?').get(companyId);
     if (!company) {
-      throw ErrorTypes.NOT_FOUND('公司不存在');
+      throw ErrorTypes.NotFound('公司不存在');
     }
     
     res.json({ success: true, data: company });
@@ -43,15 +43,15 @@ router.put('/current',
     const companyId = req.user.companyId;
     
     if (!companyId) {
-      throw ErrorTypes.NOT_FOUND('用户未关联公司');
+      throw ErrorTypes.NotFound('用户未关联公司');
     }
     
     const existing = db.prepare('SELECT * FROM companies WHERE id = ?').get(companyId);
     if (!existing) {
-      throw ErrorTypes.NOT_FOUND('公司不存在');
+      throw ErrorTypes.NotFound('公司不存在');
     }
     
-    const { name, tax_id, short_name, address, phone, email, bank_name, bank_account, logo, invoice_header, remark } = req.body;
+    const { name, tax_id, tax_number, short_name, address, phone, email, bank_name, bank_account, logo, invoice_header, remark } = req.body;
     
     // 构建更新字段
     const updates = [];
@@ -59,6 +59,7 @@ router.put('/current',
     
     if (name !== undefined) { updates.push('name = ?'); values.push(name); }
     if (tax_id !== undefined) { updates.push('tax_id = ?'); values.push(tax_id); }
+    if (tax_number !== undefined) { updates.push('tax_id = ?'); values.push(tax_number); }
     if (short_name !== undefined) { updates.push('short_name = ?'); values.push(short_name); }
     if (address !== undefined) { updates.push('address = ?'); values.push(address); }
     if (phone !== undefined) { updates.push('phone = ?'); values.push(phone); }
@@ -104,7 +105,7 @@ router.get('/:id',
     const db = getDatabaseCompat();
     const company = db.prepare('SELECT * FROM companies WHERE id = ?').get(req.params.id);
     if (!company) {
-      throw ErrorTypes.NOT_FOUND('公司不存在');
+      throw ErrorTypes.NotFound('公司不存在');
     }
     res.json({ success: true, data: company });
   })
@@ -122,7 +123,7 @@ router.post('/',
     const { name, tax_id } = req.body;
     
     if (!name) {
-      throw ErrorTypes.VALIDATION_ERROR('公司名称不能为空');
+      throw ErrorTypes.ValidationError('公司名称不能为空');
     }
     
     const result = db.prepare('INSERT INTO companies (name, tax_id) VALUES (?, ?)').run(name, tax_id || null);
@@ -146,7 +147,7 @@ router.put('/:id',
     
     const existing = db.prepare('SELECT * FROM companies WHERE id = ?').get(req.params.id);
     if (!existing) {
-      throw ErrorTypes.NOT_FOUND('公司不存在');
+      throw ErrorTypes.NotFound('公司不存在');
     }
     
     db.prepare('UPDATE companies SET name = ?, tax_id = ? WHERE id = ?').run(
@@ -172,7 +173,7 @@ router.delete('/:id',
     const db = getDatabaseCompat();
     const existing = db.prepare('SELECT * FROM companies WHERE id = ?').get(req.params.id);
     if (!existing) {
-      throw ErrorTypes.NOT_FOUND('公司不存在');
+      throw ErrorTypes.NotFound('公司不存在');
     }
     
     db.prepare('DELETE FROM companies WHERE id = ?').run(req.params.id);

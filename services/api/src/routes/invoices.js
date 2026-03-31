@@ -87,7 +87,7 @@ router.get('/',
       params.push(`%${search}%`, `%${search}%`);
     }
     
-    if (status) {
+    if (status && status !== 'all') {
       whereClause += ' AND i.status = ?';
       params.push(status);
     }
@@ -122,7 +122,7 @@ router.get('/',
     
     const offset = (page - 1) * pageSize;
     const invoices = db.prepare(`
-      SELECT i.*, p.name as partner_name, c.name as contract_name, o.name as order_name
+      SELECT i.*, p.name as partner_name, p.tax_id as partner_tax_id, c.name as contract_name, o.name as order_name
       FROM invoices i
       LEFT JOIN partners p ON i.partner_id = p.id
       LEFT JOIN contracts c ON i.contract_id = c.id
@@ -212,10 +212,10 @@ router.get('/stats',
       data: { 
         stats, 
         monthly, 
-        byStatus,
+        by_status: byStatus,
         total,
         totalAmount,
-        pendingReview
+        pendingReview: byStatus.find(s => s.status === 'pending')?.count || 0
       } 
     });
   })
@@ -312,6 +312,14 @@ router.put('/:id',
     if ('type' in body) { body.invoice_type = body.type; delete body.type; }
     if ('amount' in body) { body.total_amount = body.amount; delete body.amount; }
     if ('invoice_date' in body) { body.issue_date = body.invoice_date; delete body.invoice_date; }
+    
+    // 转换中文日期格式为 ISO 格式
+    if (body.issue_date && typeof body.issue_date === 'string' && body.issue_date.includes('年')) {
+      const match = body.issue_date.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
+      if (match) {
+        body.issue_date = `${match[1]}-${String(match[2]).padStart(2, '0')}-${String(match[3]).padStart(2, '0')}`;
+      }
+    }
 
     const updates = [];
     const values = [];

@@ -103,7 +103,7 @@ export const API_ENDPOINTS = {
   // 财务报表
   reports: {
     profitLoss: '/financial-reports/profit-loss',
-    balance: '/financial-reports/balance',
+    balance: '/financial-reports/balance-sheet',
     cashflow: '/financial-reports/cashflow'
   },
   

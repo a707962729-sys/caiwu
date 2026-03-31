@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -9,6 +9,7 @@ const fileUpload = require('express-fileupload');
 const path = require('path');
 const config = require('./config');
 const { errorHandler, notFoundHandler, requestLogger } = require('./middleware/error');
+const { internalApiKeyMiddleware } = require('./middleware/auth');
 const { initDatabase, initSchema, isSchemaInitialized } = require('./database');
 
 // 导入路由
@@ -19,6 +20,7 @@ const settingsRoutes = require('./routes/settings');
 const transactionRoutes = require('./routes/transactions');
 const contractRoutes = require('./routes/contracts');
 const orderRoutes = require('./routes/orders');
+const accountRoutes = require('./routes/accounts');
 const reimbursementRoutes = require('./routes/reimbursements');
 const invoiceRoutes = require('./routes/invoices');
 const partnerRoutes = require('./routes/partners');
@@ -29,6 +31,7 @@ const auditLogRoutes = require('./routes/audit-logs');
 const attendanceRoutes = require('./routes/attendance');
 const leaveRequestRoutes = require('./routes/leave-requests');
 const salaryRoutes = require('./routes/salaries');
+const employeeRoutes = require('./routes/employees');
 const supplierRoutes = require('./routes/suppliers');
 const purchaseOrderRoutes = require('./routes/purchase-orders');
 const goodsReceiptRoutes = require('./routes/goods-receipts');
@@ -48,6 +51,7 @@ const aiQueryRoutes = require('./routes/ai-query');
 const aiAnalyticsRoutes = require('./routes/ai-analytics');
 const financeRoutes = require('./routes/finance');
 const openclawRoutes = require('./routes/openclaw');
+const qqbotRoutes = require('./routes/qqbot');
 const quotationRoutes = require('./routes/quotations');
 const salesOrderRoutes = require('./routes/sales-orders');
 const purchaseRequestRoutes = require('./routes/purchase-requests');
@@ -55,6 +59,7 @@ const receivableRoutes = require('./routes/receivables');
 const payableRoutes = require('./routes/payables');
 const invoiceEntryRoutes = require('./routes/invoice-entry');
 const { openclawService } = require('./services/openclaw');
+const { startQQBotWS, stopQQBotWS, getQQBotWSStatus } = require('./qqbot-ws');
 
 // 创建Express应用
 const app = express();
@@ -78,6 +83,9 @@ if (config.env !== 'test') {
   app.use(morgan('combined'));
 }
 app.use(requestLogger);
+
+// 内部 API Key 认证（用于 AI 工具等内部服务调用）
+app.use(internalApiKeyMiddleware);
 
 // API速率限制
 const apiLimiter = rateLimit({
@@ -105,6 +113,8 @@ app.use('/api/', apiLimiter);
 app.use('/api/auth/login', authLimiter);
 
 // API路由
+const internalOcrRoutes = require('./routes/internal-ocr');
+app.use('/api/internal', internalOcrRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/companies', companyRoutes);
@@ -114,6 +124,7 @@ app.use('/api/config', settingsRoutes); // config 别名，前端兼容
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/contracts', contractRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/accounts', accountRoutes);
 app.use('/api/reimbursements', reimbursementRoutes);
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/invoice-entry', invoiceEntryRoutes);
@@ -125,6 +136,7 @@ app.use('/api/audit-logs', auditLogRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/leave-requests', leaveRequestRoutes);
 app.use('/api/salaries', salaryRoutes);
+app.use('/api/employees', employeeRoutes);
 app.use('/api/dict', dictRoutes);
 app.use('/api/code-rules', codeRulesRoutes);
 app.use('/api/organizations', organizationRoutes);
@@ -145,6 +157,7 @@ app.use('/api/ai-query', aiQueryRoutes);
 app.use('/api/ai-analytics', aiAnalyticsRoutes);
 app.use('/api/finance', financeRoutes);
 app.use('/api/openclaw', openclawRoutes);
+app.use('/api/qqbot', qqbotRoutes);
 app.use('/api/quotations', quotationRoutes);
 app.use('/api/sales-orders', salesOrderRoutes);
 app.use('/api/purchase-requests', purchaseRequestRoutes);
@@ -170,6 +183,18 @@ app.use('/api/roles', roleRoutes);
 // 报销标准路由
 const reimbursementStandardRoutes = require('./routes/reimbursement-standards');
 app.use('/api/reimbursement-standards', reimbursementStandardRoutes);
+
+// 合同审核路由
+const contractReviewRoutes = require('./routes/contract-reviews');
+app.use('/api', contractReviewRoutes);
+
+// 合同文件上传路由
+const contractUploadRoutes = require('./routes/contract-upload');
+app.use('/api', contractUploadRoutes);
+
+// 服务启动器路由
+const launcherRoutes = require('./routes/launcher');
+app.use('/api/launcher', launcherRoutes);
 
 // 健康检查
 app.get('/health', (req, res) => {
@@ -237,7 +262,10 @@ async function startServer() {
     
     // 初始化 OpenClaw 服务
     await openclawService.init();
-    
+
+    // 启动 QQ 机器人 WebSocket 服务
+    startQQBotWS();
+
     // 启动HTTP服务
     app.listen(config.port, () => {
       console.log(`🚀 Server running on port ${config.port}`);
@@ -252,13 +280,15 @@ async function startServer() {
 }
 
 // 优雅关闭
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
   console.log('SIGTERM received, shutting down gracefully...');
+  await stopQQBotWS();
   process.exit(0);
 });
 
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
   console.log('SIGINT received, shutting down gracefully...');
+  await stopQQBotWS();
   process.exit(0);
 });
 

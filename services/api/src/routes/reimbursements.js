@@ -148,46 +148,40 @@ router.post('/',
       throw ErrorTypes.DuplicateEntry('报销单号');
     }
     
-    // 开启事务
-    const insertReimbursement = db.transaction(() => {
-      const result = db.prepare(`
-        INSERT INTO reimbursements (
-          company_id, reimbursement_no, user_id, title, reimbursement_type,
-          amount, currency, application_date, expense_date, description, notes
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        companyId, reimbursement_no, req.user.id, data.title, data.reimbursement_type || null,
-        data.amount, data.currency, data.application_date, data.expense_date || null,
-        data.description || null, data.notes || null
-      );
+    // Single insert without transaction
+    const result = db.prepare(`
+      INSERT INTO reimbursements (
+        company_id, reimbursement_no, user_id, title, reimbursement_type,
+        amount, currency, application_date, expense_date, description, notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      companyId, reimbursement_no, req.user.id, data.title || null, data.reimbursement_type || null,
+      data.amount, data.currency || 'CNY', data.application_date || null, data.expense_date || null,
+      data.description || null, data.notes || null
+    );
+    
+    const reimbursementId = result.lastInsertRowid;
+    
+    if (items.length > 0) {
+      const insertItem = db.prepare(`
+        INSERT INTO reimbursement_items (
+          reimbursement_id, item_date, category, description, amount, currency, invoice_no, notes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
       
-      const reimbursementId = result.lastInsertRowid;
-      
-      // 插入明细
-      if (items.length > 0) {
-        const insertItem = db.prepare(`
-          INSERT INTO reimbursement_items (
-            reimbursement_id, item_date, category, description, amount, currency, invoice_no, notes
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `);
-        
-        for (const item of items) {
-          insertItem.run(
-            reimbursementId, item.item_date || null, item.category || null,
-            item.description || null, item.amount, item.currency,
-            item.invoice_no || null, item.notes || null
-          );
-        }
+      for (const item of items) {
+        insertItem.run(
+          reimbursementId, item.item_date || null, item.category || null,
+          item.description || null, item.amount, item.currency || 'CNY',
+          item.invoice_no || null, item.notes || null
+        );
       }
-      
-      return reimbursementId;
-    });
+    }
     
-    const newId = insertReimbursement();
-    const newReimbursement = db.prepare('SELECT * FROM reimbursements WHERE id = ?').get(newId);
+    const newReimbursement = db.prepare('SELECT * FROM reimbursements WHERE id = ?').get(reimbursementId);
     
-    // 记录审计日志
-    AuditLogger.logCreate('reimbursements', newId, newReimbursement, req);
+    // 记录审计日志 (失败不影响主流程)
+    try { AuditLogger.logCreate('reimbursements', reimbursementId, newReimbursement, req); } catch(e) {}
     
     res.status(201).json({ success: true, data: newReimbursement, message: '报销单创建成功' });
   })

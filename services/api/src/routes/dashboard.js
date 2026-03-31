@@ -8,6 +8,52 @@ const { ErrorTypes, asyncHandler } = require('../middleware/error');
 router.use(authMiddleware);
 
 /**
+ * @route   GET /api/dashboard/
+ * @desc    仪表盘根路径，返回可用端点列表
+ */
+router.get('/',
+  asyncHandler(async (req, res) => {
+    res.json({
+      success: true,
+      data: {
+        message: '财务管家仪表盘 API',
+        version: '1.0.0',
+        endpoints: [
+          { path: '/overview', method: 'GET', desc: '仪表盘概览数据' },
+          { path: '/cashflow', method: 'GET', desc: '现金流数据' },
+          { path: '/category', method: 'GET', desc: '收支分类统计' },
+          { path: '/receivables', method: 'GET', desc: '应收账款' },
+          { path: '/payables', method: 'GET', desc: '应付账款' },
+          { path: '/tax', method: 'GET', desc: '税务概览' }
+        ]
+      }
+    });
+  })
+);
+
+/**
+ * @route   GET /api/dashboard/info
+ * @desc    获取仪表盘可用端点列表
+ */
+router.get('/info',
+  asyncHandler(async (req, res) => {
+    res.json({
+      success: true,
+      data: {
+        endpoints: [
+          { path: '/overview', method: 'GET', desc: '仪表盘概览数据' },
+          { path: '/cashflow', method: 'GET', desc: '现金流数据' },
+          { path: '/category', method: 'GET', desc: '收支分类统计' },
+          { path: '/receivables', method: 'GET', desc: '应收账款' },
+          { path: '/payables', method: 'GET', desc: '应付账款' },
+          { path: '/tax', method: 'GET', desc: '税务概览' }
+        ]
+      }
+    });
+  })
+);
+
+/**
  * @route   GET /api/dashboard/overview
  * @desc    获取仪表盘概览数据
  */
@@ -36,10 +82,10 @@ router.get('/overview',
       SELECT 
         SUM(CASE WHEN type = 'receivable' THEN amount ELSE 0 END) as total_receivable,
         SUM(CASE WHEN type = 'payable' THEN amount ELSE 0 END) as total_payable,
-        SUM(CASE WHEN type = 'receivable' THEN paid_amount ELSE 0 END) as total_received,
-        SUM(CASE WHEN type = 'payable' THEN paid_amount ELSE 0 END) as total_paid,
-        SUM(CASE WHEN type = 'receivable' AND status IN ('pending', 'partial', 'overdue') THEN remaining_amount ELSE 0 END) as remaining_receivable,
-        SUM(CASE WHEN type = 'payable' AND status IN ('pending', 'partial', 'overdue') THEN remaining_amount ELSE 0 END) as remaining_payable
+        SUM(CASE WHEN type = 'receivable' THEN COALESCE(amount, 0) ELSE 0 END) as total_received,
+        SUM(CASE WHEN type = 'payable' THEN COALESCE(amount, 0) ELSE 0 END) as total_paid,
+        SUM(CASE WHEN type = 'receivable' AND status IN ('pending', 'partial', 'overdue') THEN amount ELSE 0 END) as remaining_receivable,
+        SUM(CASE WHEN type = 'payable' AND status IN ('pending', 'partial', 'overdue') THEN amount ELSE 0 END) as remaining_payable
       FROM receivables_payables
       WHERE company_id = ?
     `).get(companyId);
@@ -74,6 +120,10 @@ router.get('/overview',
       transactions: db.prepare(`
         SELECT COUNT(*) as count FROM transactions
         WHERE company_id = ? AND status = 'pending'
+      `).get(companyId).count,
+      invoices: db.prepare(`
+        SELECT COUNT(*) as count FROM invoices
+        WHERE company_id = ? AND status IN ('pending', 'pending_review')
       `).get(companyId).count,
       contracts_expiring: contracts?.expiring || 0
     };

@@ -55,34 +55,34 @@ router.get('/',
     const { page = 1, pageSize = 100, search, subject_type, parent_id, is_enabled, sortBy = 'subject_code', sortOrder = 'asc' } = req.query;
     const companyId = req.user.companyId;
 
-    let whereClause = 'WHERE company_id = ?';
+    let whereClause = 'WHERE s.company_id = ?';
     const params = [companyId];
 
     if (search) {
-      whereClause += ' AND (subject_code LIKE ? OR subject_name LIKE ?)';
+      whereClause += ' AND (s.subject_code LIKE ? OR s.subject_name LIKE ?)';
       params.push(`%${search}%`, `%${search}%`);
     }
 
     if (subject_type) {
-      whereClause += ' AND subject_type = ?';
+      whereClause += ' AND s.subject_type = ?';
       params.push(subject_type);
     }
 
     if (parent_id !== undefined && parent_id !== '') {
       if (parent_id === 'null' || parent_id === null) {
-        whereClause += ' AND parent_id IS NULL';
+        whereClause += ' AND s.parent_id IS NULL';
       } else {
-        whereClause += ' AND parent_id = ?';
+        whereClause += ' AND s.parent_id = ?';
         params.push(parent_id);
       }
     }
 
     if (is_enabled !== undefined) {
-      whereClause += ' AND is_enabled = ?';
+      whereClause += ' AND s.is_enabled = ?';
       params.push(is_enabled === 'true' || is_enabled === true ? 1 : 0);
     }
 
-    const countResult = db.prepare(`SELECT COUNT(*) as total FROM accounting_subjects ${whereClause}`).get(...params);
+    const countResult = db.prepare(`SELECT COUNT(*) as total FROM accounting_subjects s ${whereClause}`).get(...params);
 
     // SQL注入防护：白名单验证排序字段
     const allowedSortFields = ['id', 'subject_code', 'subject_name', 'subject_type', 'level', 'direction', 'created_at'];

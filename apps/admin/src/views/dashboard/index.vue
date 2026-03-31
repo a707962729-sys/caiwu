@@ -52,7 +52,7 @@
         </el-card>
       </el-col>
       <el-col :xs="24" :sm="12" :md="6">
-        <el-card shadow="hover" class="metric-card pending" @click="navigateTo('/pending')">
+        <el-card shadow="hover" class="metric-card pending" @click="navigateTo('/workflows/tasks')">
           <div class="metric-content">
             <div class="metric-icon">
               <el-icon :size="28"><Bell /></el-icon>
@@ -93,13 +93,13 @@
             <span class="card-title">快捷操作</span>
           </template>
           <div class="quick-actions">
-            <el-button type="primary" :icon="Plus" size="large" @click="navigateTo('/transactions/create')">
+            <el-button type="primary" :icon="Plus" size="large" @click="navigateTo('/transactions?action=create')">
               新建记账
             </el-button>
-            <el-button type="success" :icon="Upload" size="large" @click="navigateTo('/invoices/upload')">
+            <el-button type="success" :icon="Upload" size="large" @click="navigateTo('/invoices?action=upload')">
               上传票据
             </el-button>
-            <el-button type="warning" :icon="Document" size="large" @click="navigateTo('/contracts/create')">
+            <el-button type="warning" :icon="Document" size="large" @click="navigateTo('/contracts?action=create')">
               新建合同
             </el-button>
             <el-button type="info" :icon="DataLine" size="large" @click="navigateTo('/reports')">
@@ -201,6 +201,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
+import { useSafeNavigate } from '@/composables/useNavigation'
 import * as echarts from 'echarts'
 import { 
   TrendCharts, Wallet, DataAnalysis, Bell, Plus, Upload, Document, DataLine,
@@ -209,6 +210,7 @@ import {
 import { dashboardApi, type DashboardOverview, type AccountItem, type CashflowData, type DashboardCategoryData } from '@/api'
 
 const router = useRouter()
+const { safeNavigate } = useSafeNavigate()
 
 // 数据状态
 const loading = ref(true)
@@ -270,7 +272,7 @@ const getAccountIcon = (type: string) => {
 }
 
 const navigateTo = (path: string) => {
-  router.push(path)
+  safeNavigate(path)
 }
 
 // 加载数据

@@ -105,8 +105,8 @@ router.get('/all',
 
     const warehouses = db.prepare(`
       SELECT id, name, warehouse_code, warehouse_type, status
-      FROM warehouses
-      WHERE company_id = ? AND status = 'active'
+      FROM warehouses w
+      WHERE w.company_id = ? AND w.status = 'active'
       ORDER BY name
     `).all(companyId);
 

@@ -35,6 +35,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '合同管理', icon: 'Document' }
       },
       {
+        path: 'contracts/review/:id',
+        name: 'ContractReview',
+        component: () => import('@/views/contracts/review.vue'),
+        meta: { title: '合同审核', icon: 'Document' }
+      },
+      {
         path: 'partners',
         name: 'Partners',
         component: () => import('@/views/partners/index.vue'),
@@ -101,6 +107,36 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '用户管理', icon: 'Setting' }
       },
       {
+        path: 'employees',
+        name: 'Employees',
+        component: () => import('@/views/employees/index.vue'),
+        meta: { title: '员工管理', icon: 'UserFilled' }
+      },
+      {
+        path: 'employees/:id',
+        name: 'EmployeeDetail',
+        component: () => import('@/views/employees/EmployeeDetail.vue'),
+        meta: { title: '员工详情', icon: 'UserFilled' }
+      },
+      {
+        path: 'attendance',
+        name: 'Attendance',
+        component: () => import('@/views/attendance/index.vue'),
+        meta: { title: '考勤管理', icon: 'Clock' }
+      },
+      {
+        path: 'salary',
+        name: 'Salary',
+        component: () => import('@/views/salary/index.vue'),
+        meta: { title: '工资管理', icon: 'Money' }
+      },
+      {
+        path: 'onboarding',
+        name: 'Onboarding',
+        component: () => import('@/views/onboarding/index.vue'),
+        meta: { title: '入职录入', icon: 'User' }
+      },
+      {
         path: 'suppliers',
         name: 'Suppliers',
         component: () => import('@/views/suppliers/index.vue'),
@@ -125,12 +161,30 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '流程定义', icon: 'Share' }
       },
       {
+        path: 'reimbursements',
+        name: 'Reimbursements',
+        component: () => import('@/views/reimbursements/index.vue'),
+        meta: { title: '报销管理', icon: 'Wallet' }
+      },
+      {
         path: 'workflows/tasks',
         name: 'WorkflowTasks',
         component: () => import('@/views/workflows/tasks/index.vue'),
         meta: { title: '我的待办', icon: 'Document' }
-      }
+      },
+      {
+        path: 'ai',
+        name: 'AI',
+        component: () => import('@/views/ai/index.vue'),
+        meta: { title: 'AI 助手', icon: 'MagicStick' }
+      },
     ]
+  },
+  {
+    path: '/launcher',
+    name: 'Launcher',
+    component: () => import('@/views/launcher/index.vue'),
+    meta: { title: '服务管理器', icon: 'Setting', requiresAuth: false }
   },
   {
     path: '/:pathMatch(.*)*',
@@ -145,8 +199,9 @@ const router = createRouter({
   routes
 })
 
-// 路由守卫
 router.beforeEach(async (to, from, next) => {
+  // 组件的 handleMenuSelect 已经有防抖处理，这里不需要重复加锁
+  
   const userStore = useUserStore()
   
   // 设置页面标题

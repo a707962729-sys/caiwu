@@ -52,22 +52,12 @@ router.get('/',
     const { page = 1, pageSize = 20, search, type, level, status, owner_id, sortBy = 'created_at', sortOrder = 'desc' } = req.query;
     const companyId = req.user.companyId;
 
-    let whereClause = 'WHERE c.company_id = ?';
+    let whereClause = 'WHERE company_id = ?';
     const params = [companyId];
 
     if (search) {
-      whereClause += ' AND (name LIKE ? OR industry LIKE ?)';
+      whereClause += ' AND (name LIKE ? OR tax_id LIKE ?)';
       params.push(`%${search}%`, `%${search}%`);
-    }
-
-    if (type) {
-      whereClause += ' AND type = ?';
-      params.push(type);
-    }
-
-    if (level) {
-      whereClause += ' AND level = ?';
-      params.push(level);
     }
 
     if (status) {
@@ -75,23 +65,17 @@ router.get('/',
       params.push(status);
     }
 
-    if (owner_id) {
-      whereClause += ' AND owner_id = ?';
-      params.push(owner_id);
-    }
-
-    const countResult = db.prepare(`SELECT COUNT(*) as total FROM customers c ${whereClause}`).get(...params);
+    const countResult = db.prepare(`SELECT COUNT(*) as total FROM customers ${whereClause}`).get(...params);
 
     // SQL注入防护：白名单验证排序字段
-    const allowedSortFields = ['id', 'name', 'type', 'level', 'status', 'created_at', 'updated_at'];
+    const allowedSortFields = ['id', 'name', 'status', 'created_at'];
     const sortField = allowedSortFields.includes(sortBy) ? sortBy : 'created_at';
     const order = sortOrder.toLowerCase() === 'asc' ? 'ASC' : 'DESC';
 
     const offset = (page - 1) * pageSize;
     const customers = db.prepare(`
-      SELECT c.*, u.real_name as owner_name
-      FROM customers c
-      LEFT JOIN users u ON c.owner_id = u.id
+      SELECT *
+      FROM customers
       ${whereClause}
       ORDER BY ${sortField} ${order}
       LIMIT ? OFFSET ?
@@ -121,9 +105,7 @@ router.get('/stats',
       SELECT 
         COUNT(*) as total,
         SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active,
-        SUM(CASE WHEN status = 'inactive' THEN 1 ELSE 0 END) as inactive,
-        SUM(CASE WHEN level = 'vip' THEN 1 ELSE 0 END) as vip_count,
-        SUM(CASE WHEN level = 'key' THEN 1 ELSE 0 END) as key_count
+        SUM(CASE WHEN status = 'inactive' THEN 1 ELSE 0 END) as inactive
       FROM customers
       WHERE company_id = ?
     `).get(companyId);
@@ -143,10 +125,9 @@ router.get('/:id',
     const db = getDatabaseCompat();
 
     const customer = db.prepare(`
-      SELECT c.*, u.real_name as owner_name
-      FROM customers c
-      LEFT JOIN users u ON c.owner_id = u.id
-      WHERE c.id = ? AND c.company_id = ?
+      SELECT *
+      FROM customers
+      WHERE id = ? AND company_id = ?
     `).get(req.params.id, req.user.companyId);
 
     if (!customer) {

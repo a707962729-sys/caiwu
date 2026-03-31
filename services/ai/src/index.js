@@ -16,6 +16,24 @@ const logger = require('./utils/logger');
 // 创建 Express 应用
 const app = express();
 
+// ============ 全局错误处理 ============
+
+// 处理未捕获的Promise rejection
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  console.error('Unhandled Rejection:', reason);
+});
+
+// 处理未捕获的异常
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught Exception:', error);
+  console.error('Uncaught Exception:', error);
+  // 不立即退出，给5秒让日志写入
+  setTimeout(() => {
+    process.exit(1);
+  }, 5000);
+});
+
 // 中间件
 app.use(helmet());
 app.use(cors());
@@ -46,6 +64,7 @@ app.get('/health', (req, res) => {
 // API 路由
 app.use('/api/ai', require('./routes/ai'));
 app.use('/api/ocr', require('./routes/ocr'));
+app.use('/api/ai/agent', require('./routes/agent'));
 
 // 错误处理
 app.use((err, req, res, next) => {
@@ -63,7 +82,7 @@ app.use((req, res) => {
 
 // 启动服务器
 const PORT = config.port || 3001;
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   logger.info(`AI 服务已启动: http://localhost:${PORT}`);
   console.log(`
 ╔═══════════════════════════════════════════════════════════╗
@@ -76,6 +95,34 @@ app.listen(PORT, () => {
 ║                                                           ║
 ╚═══════════════════════════════════════════════════════════╝
   `);
+});
+
+// 服务器错误处理
+server.on('error', (error) => {
+  if (error.code === 'EADDRINUSE') {
+    logger.error(`端口 ${PORT} 已被占用`);
+    console.error(`端口 ${PORT} 已被占用`);
+  } else {
+    logger.error('Server error:', error);
+    console.error('Server error:', error);
+  }
+});
+
+// 优雅关闭
+process.on('SIGTERM', () => {
+  logger.info('收到 SIGTERM 信号，正在关闭...');
+  server.close(() => {
+    logger.info('服务器已关闭');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  logger.info('收到 SIGINT 信号，正在关闭...');
+  server.close(() => {
+    logger.info('服务器已关闭');
+    process.exit(0);
+  });
 });
 
 module.exports = app;

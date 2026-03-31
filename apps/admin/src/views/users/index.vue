@@ -487,16 +487,22 @@ const formatDate = (date: string) => {
 const loadData = async () => {
   loading.value = true
   try {
+    // 转换筛选状态: 前端用 0/1，API 用 'active'/'inactive'
+    const statusParam = filterForm.status === 1 ? 'active' : filterForm.status === 0 ? 'inactive' : undefined
     const res = await userApi.getList({
       page: pagination.page,
       pageSize: pagination.pageSize,
       search: filterForm.search || undefined,
       role: filterForm.role || undefined,
-      status: filterForm.status as 0 | 1 | undefined,
+      status: statusParam,
       department: filterForm.department || undefined
     })
     
-    tableData.value = res.list || []
+    // 标准化 status: API 返回 'active'/'inactive' 字符串，转换为 1/0 数字
+    tableData.value = (res.list || []).map(user => ({
+      ...user,
+      status: user.status === 'active' ? 1 : user.status === 'inactive' ? 0 : user.status
+    }))
     pagination.total = res.total || 0
   } catch (e) {
     console.error('加载失败', e)
@@ -646,7 +652,8 @@ const handleSubmit = async () => {
 // 状态变更
 const handleStatusChange = async (row: UserType) => {
   try {
-    await userApi.update(row.id, { status: row.status })
+    const statusStr = row.status === 1 ? 'active' : 'inactive'
+    await userApi.update(row.id, { status: statusStr })
     ElMessage.success(row.status === 1 ? '已启用' : '已禁用')
     loadStats()
   } catch (e) {

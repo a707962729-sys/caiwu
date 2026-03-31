@@ -113,6 +113,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { useSafeNavigate } from '@/composables/useNavigation'
 import { ElMessage } from 'element-plus'
 import { User, Lock, Wallet, DataAnalysis, Document, TrendCharts, Loading } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
@@ -121,6 +122,7 @@ import { TokenManager } from '@/utils/auth'
 
 const router = useRouter()
 const route = useRoute()
+const { safeNavigate } = useSafeNavigate()
 const userStore = useUserStore()
 
 // 表单引用
@@ -189,8 +191,19 @@ async function handleLogin() {
     ElMessage.success('登录成功')
     
     // 跳转到目标页面或首页
+    // 使用 router.replace 直接导航，避免 safeNavigate 的锁机制可能导致的阻塞
     const redirect = route.query.redirect as string
-    router.replace(redirect || '/dashboard')
+    const targetPath = redirect || '/dashboard'
+    
+    try {
+      await router.replace(targetPath)
+    } catch (error: any) {
+      // 忽略重复导航错误
+      if (error.name !== 'NavigationDuplicated' && error.name !== 'NavigationCancelled') {
+        console.error('[Login] Navigation error:', error)
+        ElMessage.error('页面跳转失败，请手动刷新')
+      }
+    }
   } catch (error: any) {
     // 根据错误类型显示不同的提示
     let errorMsg = '登录失败'
@@ -237,7 +250,7 @@ async function handleLogin() {
 onMounted(async () => {
   // 1. 检查是否已登录且 Token 有效
   if (TokenManager.isTokenValid() && userStore.isLoggedIn) {
-    router.replace('/dashboard')
+    await router.replace('/dashboard').catch(() => {})
     return
   }
   
@@ -250,7 +263,7 @@ onMounted(async () => {
       if (success) {
         ElMessage.success('自动登录成功')
         const redirect = route.query.redirect as string
-        router.replace(redirect || '/dashboard')
+        await router.replace(redirect || '/dashboard').catch(() => {})
         return
       }
     } catch {

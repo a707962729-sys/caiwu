@@ -241,7 +241,11 @@ router.post('/',
   validate(dictSchemas.create),
   asyncHandler(async (req, res) => {
     const db = getDatabaseCompat();
-    const { dict_type, dict_code, dict_name, dict_value, parent_code, sort_order, status, description } = req.body;
+    // 兼容前端发送的 type/code/name 和后端格式 dict_type/dict_code/dict_name
+    const dict_type = req.body.type || req.body.dict_type;
+    const dict_code = req.body.code || req.body.dict_code;
+    const dict_name = req.body.name || req.body.dict_name;
+    const { dict_value, parent_code, sort_order, status, description } = req.body;
     const companyId = req.user.companyId;
 
     // 检查是否已存在
@@ -287,6 +291,12 @@ router.put('/:id(\\d+)',
     const { id } = req.params;
     const db = getDatabaseCompat();
     const companyId = req.user.companyId;
+
+    // 兼容前端发送的 name/code/type 格式
+    if (req.body.name !== undefined) req.body.dict_name = req.body.name;
+    if (req.body.code !== undefined) req.body.dict_code = req.body.code;
+    if (req.body.type !== undefined) req.body.dict_type = req.body.type;
+    if (req.body.parent_id !== undefined) req.body.parent_code = String(req.body.parent_id);
 
     // 检查是否存在
     const item = db.prepare(`

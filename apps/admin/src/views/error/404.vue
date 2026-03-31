@@ -11,11 +11,13 @@
 
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
+import { useSafeNavigate } from '@/composables/useNavigation'
 
 const router = useRouter()
+const { safeNavigate } = useSafeNavigate()
 
 function goHome() {
-  router.push('/dashboard')
+  safeNavigate('/dashboard')
 }
 </script>
 

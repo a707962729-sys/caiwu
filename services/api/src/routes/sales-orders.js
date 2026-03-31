@@ -19,14 +19,14 @@ router.get('/stats', permissionMiddleware('sales', 'read'), asyncHandler(async (
       SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_orders,
       SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_orders
     FROM orders
-    WHERE company_id = ? AND order_type = 'sales'
+    WHERE company_id = ? AND type = 'sales'
   `).get(companyId);
   
   // 按状态统计
   const byStatus = db.prepare(`
     SELECT status, COUNT(*) as count, SUM(total_amount) as amount
     FROM orders
-    WHERE company_id = ? AND order_type = 'sales'
+    WHERE company_id = ? AND type = 'sales'
     GROUP BY status
   `).all(companyId);
   
@@ -39,16 +39,15 @@ router.get('/', permissionMiddleware('sales', 'read'), asyncHandler(async (req, 
   const { page = 1, pageSize = 20, status } = req.query;
   const companyId = req.user.companyId;
   
-  let where = 'WHERE o.company_id = ? AND o.order_type = ?';
+  let where = 'WHERE company_id = ? AND type = ?';
   const params = [companyId, 'sales'];
-  if (status) { where += ' AND o.status = ?'; params.push(status); }
+  if (status) { where += ' AND status = ?'; params.push(status); }
   
-  const countResult = db.prepare(`SELECT COUNT(*) as total FROM orders o ${where}`).get(...params);
+  const countResult = db.prepare(`SELECT COUNT(*) as total FROM orders ${where}`).get(...params);
   const list = db.prepare(`
-    SELECT o.*, p.name as partner_name 
-    FROM orders o 
-    LEFT JOIN partners p ON o.partner_id = p.id 
-    ${where} ORDER BY o.created_at DESC LIMIT ? OFFSET ?
+    SELECT * 
+    FROM orders
+    ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?
   `).all(...params, pageSize, (page - 1) * pageSize);
   
   res.json({ success: true, data: { list, pagination: { page, pageSize, total: countResult.total } } });

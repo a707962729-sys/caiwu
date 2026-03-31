@@ -5,6 +5,12 @@ require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 // 先定义 providers（IIFE 需要提前引用）
 const providers = {
+  kimi: {
+    apiKey: process.env.KIMI_API_KEY || '',
+    baseUrl: process.env.KIMI_BASE_URL || 'https://api.kimi.com/coding/v1',
+    model: process.env.KIMI_MODEL || 'k2p5',
+    enabled: !!process.env.KIMI_API_KEY
+  },
   openai: {
     apiKey: process.env.OPENAI_API_KEY || '',
     baseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
@@ -20,6 +26,12 @@ const providers = {
     baseUrl: process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
     model: process.env.OLLAMA_MODEL || 'llama3.2',
     enabled: process.env.OLLAMA_ENABLED === 'true' || false
+  },
+  glmFlash: {
+    apiKey: process.env.GLM_API_KEY || '',
+    baseUrl: process.env.GLM_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4',
+    model: process.env.GLM_MODEL || 'glm-4-flash',
+    enabled: !!process.env.GLM_API_KEY
   }
 };
 
@@ -33,14 +45,20 @@ const config = {
   },
 
   // JWT 配置
+  ai: {
+    provider: 'openai',
+    visionModel: 'glm-4v-flash'
+  },
+
   jwt: {
-    secret: process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production',
+    secret: process.env.JWT_SECRET || 'caiwu-jwt-secret-key-change-in-production',
     expiresIn: process.env.JWT_EXPIRES_IN || '7d'
   },
 
   // 主 API 配置
   api: {
-    baseUrl: process.env.API_BASE_URL || 'http://localhost:3000/api'
+    baseUrl: process.env.API_BASE_URL || 'http://localhost:3000/api',
+    internalApiKey: process.env.INTERNAL_API_KEY || 'caiwu-internal-service-key-2024'
   },
 
   // AI 提供商配置
@@ -58,6 +76,15 @@ const config = {
       secretId: process.env.TENCENT_SECRET_ID || '',
       secretKey: process.env.TENCENT_SECRET_KEY || ''
     }
+  },
+
+  // 百度NLP配置（用于合同审核增强）
+  // 需要在百度AI平台开通 NLP 相关服务（与OCR是不同产品，需单独申请）
+  // 文档: https://cloud.baidu.com/doc/NLP/s/ajaxhfp5z
+  baiduNlp: {
+    apiKey: process.env.BAIDU_NLP_API_KEY || '',
+    secretKey: process.env.BAIDU_NLP_SECRET_KEY || '',
+    enabled: !!process.env.BAIDU_NLP_API_KEY
   },
 
   // 功能开关
@@ -83,6 +110,7 @@ const config = {
   // 默认 AI 模型优先级
   defaultModel: (() => {
     if (process.env.DEFAULT_MODEL) return process.env.DEFAULT_MODEL;
+    if (providers.kimi.enabled) return 'kimi'; // Kimi key not working, use openai(GLM)
     if (providers.openai.enabled) return 'openai';
     if (providers.anthropic.enabled) return 'anthropic';
     if (providers.ollama.enabled) return 'ollama';

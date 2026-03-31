@@ -88,15 +88,15 @@ export const API_ENDPOINTS = {
     delete: (id: number) => `/partners/${id}`
   },
   
-  // 应收应付
+  // 应收应付 - 后端使用 /receivables 和 /payables 分开路由
   receivablesPayables: {
-    list: '/receivables-payables',
-    receivables: '/receivables-payables/receivables',
-    payables: '/receivables-payables/payables',
-    detail: (id: number) => `/receivables-payables/${id}`,
-    create: '/receivables-payables',
-    update: (id: number) => `/receivables-payables/${id}`,
-    delete: (id: number) => `/receivables-payables/${id}`
+    list: '/receivables',
+    receivables: '/receivables',
+    payables: '/payables',
+    detail: (id: number) => `/receivables/${id}`,
+    create: '/receivables',
+    update: (id: number) => `/receivables/${id}`,
+    delete: (id: number) => `/receivables/${id}`
   },
   
   // 仪表盘

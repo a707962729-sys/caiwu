@@ -132,6 +132,11 @@
             <span class="amount">{{ formatMoney(row.total_amount) }}</span>
           </template>
         </el-table-column>
+        <el-table-column prop="amount_before_tax" label="不含税金额" width="120" align="right">
+          <template #default="{ row }">
+            <span class="amount">{{ formatMoney(row.amount_before_tax) }}</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="issue_date" label="日期" width="110" align="center">
           <template #default="{ row }">
             {{ formatDate(row.issue_date) }}
@@ -487,7 +492,7 @@ const handleEdit = (row: Invoice) => {
     invoice_no: row.invoice_no,
     type: row.type,
     amount: row.amount,
-    invoice_date: row.invoice_date,
+    invoice_date: dayjs(row.invoice_date).format('YYYY-MM-DD'),
     status: row.status,
     issuer: row.issuer,
     payer: row.payer,

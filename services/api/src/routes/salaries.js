@@ -4,6 +4,7 @@ const { getDatabaseCompat } = require('../database');
 const { authMiddleware, permissionMiddleware, requireRole } = require('../middleware/auth');
 const { ErrorTypes, asyncHandler } = require('../middleware/error');
 const { AuditLog } = require('../middleware/audit');
+const { calculateMonthlySalary, autoGenerateMonthlySalaries } = require('../services/salary-calculator');
 
 router.use(authMiddleware);
 
@@ -138,17 +139,21 @@ router.post('/',
       
       res.json({ success: true, data: updated, message: '工资记录已更新' });
     } else {
+      // 查找employee_id
+      const emp = db.prepare('SELECT id FROM employees WHERE company_id = ? AND user_id = ?').get(req.user.companyId, user_id);
+      const employee_id = emp ? emp.id : null;
+
       // 创建
       const result = db.prepare(`
         INSERT INTO salaries (
-          company_id, user_id, year, month,
+          company_id, employee_id, user_id, year, month,
           base_salary, position_allowance, performance_bonus,
           overtime_pay, other_bonus,
           social_insurance, housing_fund, tax, other_deduction,
           actual_salary, notes, created_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        req.user.companyId, user_id, year, month,
+        req.user.companyId, employee_id, user_id, year, month,
         base_salary, position_allowance || 0, performance_bonus || 0,
         overtime_pay || 0, other_bonus || 0,
         social_insurance || 0, housing_fund || 0, tax || 0, other_deduction || 0,
@@ -322,6 +327,67 @@ router.get('/my',
     res.json({
       success: true,
       data: list
+    });
+  })
+);
+
+/**
+ * 计算员工月薪（预览）
+ * GET /api/salaries/calculate/:employeeId
+ */
+router.get('/calculate/:employeeId',
+  requireRole(['boss', 'accountant']),
+  asyncHandler(async (req, res) => {
+    const { employeeId } = req.params;
+    let { year, month } = req.query;
+    const companyId = req.user.companyId;
+    
+    // 支持 YYYY-MM 格式
+    if (month && month.includes('-')) {
+      const parts = month.split('-');
+      year = parts[0];
+      month = parts[1];
+    }
+    
+    if (!year || !month) {
+      throw ErrorTypes.BadRequest('请提供年份和月份');
+    }
+    
+    const result = calculateMonthlySalary(
+      parseInt(employeeId),
+      companyId,
+      parseInt(year),
+      parseInt(month)
+    );
+    
+    res.json({ success: true, data: result });
+  })
+);
+
+/**
+ * 自动为所有员工生成月薪
+ * POST /api/salaries/auto-generate
+ */
+router.post('/auto-generate',
+  requireRole(['boss', 'accountant']),
+  asyncHandler(async (req, res) => {
+    const { year, month } = req.body;
+    const companyId = req.user.companyId;
+    
+    if (!year || !month) {
+      throw ErrorTypes.BadRequest('请提供年份和月份');
+    }
+    
+    const results = autoGenerateMonthlySalaries(
+      companyId,
+      parseInt(year),
+      parseInt(month)
+    );
+    
+    res.json({
+      success: true,
+      data: results,
+      message: `已为 ${results.filter(r => r.status !== 'error').length} 名员工生成工资`
     });
   })
 );

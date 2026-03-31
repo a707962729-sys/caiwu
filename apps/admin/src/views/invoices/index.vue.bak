@@ -1,0 +1,387 @@
+<template>
+  <div class="invoices-page">
+    <!-- 统计卡片 -->
+    <el-row :gutter="20" class="stats-row">
+      <el-col :span="6">
+        <el-card shadow="hover" class="stat-card total">
+          <div class="stat-content">
+            <div class="stat-icon">
+              <el-icon><Document /></el-icon>
+            </div>
+            <div class="stat-info">
+              <div class="stat-label">票据总数</div>
+              <div class="stat-value">{{ stats.total }}</div>
+            </div>
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :span="6">
+        <el-card shadow="hover" class="stat-card amount">
+          <div class="stat-content">
+            <div class="stat-icon">
+              <el-icon><Money /></el-icon>
+            </div>
+            <div class="stat-info">
+              <div class="stat-label">总金额</div>
+              <div class="stat-value">{{ formatMoney(stats.total_amount) }}</div>
+            </div>
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :span="6">
+        <el-card shadow="hover" class="stat-card pending">
+          <div class="stat-content">
+            <div class="stat-icon">
+              <el-icon><Clock /></el-icon>
+            </div>
+            <div class="stat-info">
+              <div class="stat-label">待审核</div>
+              <div class="stat-value">{{ stats.pendingReview || 0 }}</div>
+            </div>
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :span="6">
+        <el-card shadow="hover" class="stat-card verified">
+          <div class="stat-content">
+            <div class="stat-icon">
+              <el-icon><CircleCheck /></el-icon>
+            </div>
+            <div class="stat-info">
+              <div class="stat-label">已审核</div>
+              <div class="stat-value">{{ getStatusCount('verified') }}</div>
+            </div>
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <!-- 筛选和操作区 -->
+    <el-card shadow="never" class="filter-card">
+      <el-form :inline="true" :model="filterForm" class="filter-form">
+        <el-form-item label="搜索">
+          <el-input 
+            v-model="filterForm.search" 
+            placeholder="票据号/开票单位/付款单位" 
+            clearable 
+            style="width: 220px"
+            @keyup.enter="handleFilter"
+            @clear="handleFilter"
+          >
+            <template #append>
+              <el-button :icon="Search" @click="handleFilter" />
+            </template>
+          </el-input>
+        </el-form-item>
+        <el-form-item label="类型">
+          <el-select v-model="filterForm.type" placeholder="全部类型" clearable style="width: 130px" @change="handleFilter">
+            <el-option label="增值税发票" value="vat_invoice" />
+            <el-option label="收据" value="receipt" />
+            <el-option label="支票" value="check" />
+            <el-option label="其他" value="other" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-select v-model="filterForm.status" placeholder="全部状态" clearable style="width: 110px" @change="handleFilter">
+            <el-option label="待处理" value="pending" />
+            <el-option label="待审核" value="pending_review" />
+            <el-option label="已审核" value="verified" />
+            <el-option label="已支付" value="paid" />
+            <el-option label="已作废" value="cancelled" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="日期">
+          <el-date-picker
+            v-model="dateRange"
+            type="daterange"
+            range-separator="至"
+            start-placeholder="开始日期"
+            end-placeholder="结束日期"
+            value-format="YYYY-MM-DD"
+            style="width: 240px"
+            @change="handleDateChange"
+          />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" :icon="Plus" @click="handleAdd">新增票据</el-button>
+          <el-button :icon="Download" @click="handleExport">导出</el-button>
+        </el-form-item>
+      </el-form>
+    </el-card>
+
+    <!-- 数据表格 -->
+    <el-card shadow="never" class="table-card">
+      <el-table
+        v-loading="loading"
+        :data="tableData"
+        stripe
+        style="width: 100%"
+      >
+        <el-table-column prop="invoice_no" label="票据号" min-width="150">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="viewInvoice(row)">{{ row.invoice_no }}</el-button>
+          </template>
+        </el-table-column>
+        <el-table-column prop="invoice_type" label="类型" width="140" align="center">
+          <template #default="{ row }">
+            <el-tag size="small">{{ row.invoice_type || '电子发票' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="total_amount" label="金额" width="130" align="right">
+          <template #default="{ row }">
+            <span class="amount">{{ formatMoney(row.total_amount) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="issue_date" label="日期" width="110" align="center">
+          <template #default="{ row }">
+            {{ formatDate(row.issue_date) }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="partner_name" label="关联单位" min-width="140">
+          <template #default="{ row }">
+            {{ row.partner_name || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="status" label="状态" width="100" align="center">
+          <template #default="{ row }">
+            <el-tag :type="getStatusTagType(row.status)" size="small">
+              {{ getStatusText(row.status) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="created_at" label="创建时间" width="160">
+          <template #default="{ row }">
+            {{ formatDateTime(row.created_at) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="200" fixed="right">
+          <template #default="{ row }">
+            <el-button v-if="row.status === 'pending'" link type="success" @click="handleVerify(row)">审核</el-button>
+            <el-button link type="primary" @click="handleEdit(row)">编辑</el-button>
+            <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <!-- 分页 -->
+      <div class="pagination-container">
+        <el-pagination
+          v-model:current-page="pagination.page"
+          v-model:page-size="pagination.pageSize"
+          :page-sizes="[10, 20, 50, 100]"
+          :total="pagination.total"
+          layout="total, sizes, prev, pager, next, jumper"
+          @size-change="handleSizeChange"
+          @current-change="handlePageChange"
+        />
+      </div>
+    </el-card>
+
+    <!-- 新增/编辑票据弹窗 -->
+    <el-dialog
+      v-model="dialogVisible"
+      :title="dialogTitle"
+      width="560px"
+      :close-on-click-modal="false"
+      @close="resetForm"
+    >
+      <el-form
+        ref="formRef"
+        :model="formData"
+        :rules="formRules"
+        label-width="90px"
+        style="padding-right: 20px"
+      >
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="票据号" prop="invoice_no">
+              <el-input v-model="formData.invoice_no" placeholder="请输入票据号" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="票据类型" prop="type">
+              <el-select v-model="formData.type" placeholder="选择类型" style="width: 100%">
+                <el-option label="增值税发票" value="vat_invoice" />
+                <el-option label="收据" value="receipt" />
+                <el-option label="支票" value="check" />
+                <el-option label="其他" value="other" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="金额" prop="amount">
+              <el-input-number
+                v-model="formData.amount"
+                :precision="2"
+                :min="0"
+                :max="999999999"
+                placeholder="请输入金额"
+                style="width: 100%"
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="日期" prop="invoice_date">
+              <el-date-picker
+                v-model="formData.invoice_date"
+                type="date"
+                placeholder="选择日期"
+                value-format="YYYY-MM-DD"
+                style="width: 100%"
+              />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="开票单位">
+              <el-input v-model="formData.issuer" placeholder="开票单位名称" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="付款单位">
+              <el-input v-model="formData.payer" placeholder="付款单位名称" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-form-item label="状态">
+          <el-select v-model="formData.status" placeholder="选择状态" style="width: 100%">
+            <el-option label="待审核" value="pending" />
+            <el-option label="已审核" value="verified" />
+            <el-option label="已支付" value="paid" />
+            <el-option label="已作废" value="cancelled" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input
+            v-model="formData.description"
+            type="textarea"
+            :rows="3"
+            placeholder="添加备注（选填）"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="handleSubmit">确定</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 删除确认 -->
+    <el-dialog
+      v-model="deleteDialogVisible"
+      title="删除确认"
+      width="400px"
+    >
+      <p>确定要删除票据「{{ deleteTarget?.invoice_no }}」吗？</p>
+      <p class="delete-warning">此操作不可恢复，请谨慎操作。</p>
+      <template #footer>
+        <el-button @click="deleteDialogVisible = false">取消</el-button>
+        <el-button type="danger" :loading="deleting" @click="confirmDelete">确定删除</el-button>
+      </template>
+    </el-dialog>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, reactive, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
+const route = useRoute()
+import { ElMessage } from 'element-plus'
+import { 
+  Plus, Download, Search, Document, Money, Clock, CircleCheck
+} from '@element-plus/icons-vue'
+import {
+  invoiceApi,
+  type Invoice,
+  type InvoiceCreateParams,
+  type InvoiceType,
+  type InvoiceStatus,
+  getInvoiceTypeLabel as getTypeLabel,
+  getInvoiceStatusLabel as getStatusLabel,
+  getInvoiceTypeTagType,
+  getInvoiceStatusTagType
+} from '@/api/invoice'
+import type { FormInstance, FormRules } from 'element-plus'
+import dayjs from 'dayjs'
+
+// 加载状态
+const loading = ref(false)
+const submitting = ref(false)
+const deleting = ref(false)
+
+// 数据
+const tableData = ref<Invoice[]>([])
+
+// 统计数据
+const stats = reactive({
+  total: 0,
+  total_amount: 0,
+  pendingReview: 0,
+  by_type: [] as Array<{ type: string; count: number; amount: number }>,
+  by_status: [] as Array<{ status: string; count: number; amount: number }>
+})
+
+// 筛选表单
+const filterForm = reactive({
+  search: '',
+  type: '' as InvoiceType | '',
+  status: '' as InvoiceStatus | '',
+  startDate: '',
+  endDate: ''
+})
+
+// 日期范围
+const dateRange = ref<[string, string] | null>(null)
+
+// 分页
+const pagination = reactive({
+  page: 1,
+  pageSize: 20,
+  total: 0
+})
+
+// 弹窗
+const dialogVisible = ref(false)
+const dialogTitle = computed(() => formData.id ? '编辑票据' : '新增票据')
+const deleteDialogVisible = ref(false)
+const deleteTarget = ref<Invoice | null>(null)
+
+// 表单
+const formRef = ref<FormInstance>()
+const formData = reactive<InvoiceCreateParams & { id?: number }>({
+  invoice_no: '',
+  type: 'vat_invoice',
+  amount: 0,
+  invoice_date: '',
+  status: 'pending',
+  issuer: '',
+  payer: '',
+  description: ''
+})
+
+// 表单校验
+const formRules: FormRules = {
+  invoice_no: [
+    { required: true, message: '请输入票据号', trigger: 'blur' },
+    { min: 1, max: 50, message: '长度在 1 到 50 个字符', trigger: 'blur' }
+  ],
+  type: [
+    { required: true, message: '请选择票据类型', trigger: 'change' }
+  ],
+  amount: [
+    { required: true, message: '请输入金额', trigger: 'blur' }
+  ],
+  invoice_date: [
+    { required: true, message: '请选择日期', trigger: 'change' }
+  ]
+}
+
+// 计算属性
+const getStatusCount = (status: InvoiceStatus) => {
+  const item = stats.by_status.find(s => s.status === status)
+  return item ? item.count : 0
+}
+  if (Math.abs(n) >= 10000) {

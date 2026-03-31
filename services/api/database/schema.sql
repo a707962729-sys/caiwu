@@ -160,6 +160,11 @@ CREATE TABLE IF NOT EXISTS ai_logs (
   action_type VARCHAR(50),
   input_text TEXT,
   output_text TEXT,
+  session_id VARCHAR(100),
+  module VARCHAR(50),
+  output_data TEXT,
+  model VARCHAR(50),
+  status VARCHAR(20),
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -327,4 +332,183 @@ CREATE TABLE IF NOT EXISTS data_dictionaries (
   created_by INTEGER,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- AI日志表（含chat_history）
+CREATE TABLE IF NOT EXISTS ai_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  company_id INTEGER,
+  user_id INTEGER,
+  action_type VARCHAR(50),
+  input_text TEXT,
+  output_text TEXT,
+  session_id VARCHAR(100),
+  module VARCHAR(50),
+  output_data TEXT,
+  model VARCHAR(50),
+  status VARCHAR(20),
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 会计科目表
+CREATE TABLE IF NOT EXISTS accounting_subjects (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  company_id INTEGER,
+  subject_code VARCHAR(50) NOT NULL,
+  subject_name VARCHAR(100) NOT NULL,
+  subject_type VARCHAR(20) NOT NULL,
+  subject_category VARCHAR(50),
+  parent_id INTEGER,
+  level INTEGER DEFAULT 1,
+  direction VARCHAR(10),
+  is_leaf INTEGER DEFAULT 1,
+  is_enabled INTEGER DEFAULT 1,
+  description TEXT,
+  balance DECIMAL(15,2) DEFAULT 0,
+  created_by INTEGER,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 记账凭证表
+CREATE TABLE IF NOT EXISTS vouchers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  company_id INTEGER,
+  voucher_no VARCHAR(50),
+  voucher_date DATE NOT NULL,
+  period_year INTEGER,
+  period_month INTEGER,
+  voucher_type VARCHAR(50) DEFAULT 'general',
+  description TEXT,
+  total_debit DECIMAL(15,2),
+  total_credit DECIMAL(15,2),
+  entries_count INTEGER,
+  reference_no VARCHAR(100),
+  reference_type VARCHAR(50),
+  reference_id INTEGER,
+  notes TEXT,
+  status VARCHAR(20) DEFAULT 'draft',
+  created_by INTEGER,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  posted_by INTEGER,
+  posted_at DATETIME,
+  voided_by INTEGER,
+  voided_at DATETIME,
+  void_reason TEXT
+);
+
+-- 凭证分录表
+CREATE TABLE IF NOT EXISTS voucher_entries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  company_id INTEGER,
+  voucher_id INTEGER NOT NULL,
+  entry_no INTEGER,
+  subject_id INTEGER,
+  subject_code VARCHAR(50),
+  subject_name VARCHAR(100),
+  description TEXT,
+  debit_amount DECIMAL(15,2) DEFAULT 0,
+  credit_amount DECIMAL(15,2) DEFAULT 0,
+  currency VARCHAR(10) DEFAULT 'CNY',
+  exchange_rate DECIMAL(15,4) DEFAULT 1,
+  original_amount DECIMAL(15,2),
+  quantity DECIMAL(15,2),
+  unit_price DECIMAL(15,2),
+  partner_id INTEGER,
+  partner_name VARCHAR(100),
+  project VARCHAR(100),
+  department VARCHAR(100),
+  settlement_no VARCHAR(50),
+  invoice_no VARCHAR(50),
+  notes TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (voucher_id) REFERENCES vouchers(id)
+);
+
+-- 采购订单表
+CREATE TABLE IF NOT EXISTS purchase_orders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  company_id INTEGER,
+  order_no VARCHAR(50) NOT NULL,
+  request_id INTEGER,
+  supplier_id INTEGER,
+  order_date DATE NOT NULL,
+  expected_date DATE,
+  order_type VARCHAR(50),
+  total_amount DECIMAL(15,2) DEFAULT 0,
+  tax_amount DECIMAL(15,2) DEFAULT 0,
+  discount_amount DECIMAL(15,2) DEFAULT 0,
+  final_amount DECIMAL(15,2) DEFAULT 0,
+  payment_terms VARCHAR(100),
+  delivery_address VARCHAR(200),
+  contact_person VARCHAR(50),
+  contact_phone VARCHAR(30),
+  description TEXT,
+  attachments VARCHAR(255),
+  notes TEXT,
+  status VARCHAR(20) DEFAULT 'draft',
+  confirmed_by INTEGER,
+  confirmed_at DATETIME,
+  received_by INTEGER,
+  received_at DATETIME,
+  cancelled_at DATETIME,
+  created_by INTEGER,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 采购订单明细表
+CREATE TABLE IF NOT EXISTS purchase_order_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id INTEGER NOT NULL,
+  item_no INTEGER,
+  product_name VARCHAR(200) NOT NULL,
+  product_code VARCHAR(50),
+  specification VARCHAR(200),
+  unit VARCHAR(20),
+  quantity DECIMAL(15,2) NOT NULL,
+  unit_price DECIMAL(15,2) NOT NULL,
+  amount DECIMAL(15,2) DEFAULT 0,
+  tax_rate DECIMAL(5,2) DEFAULT 0,
+  tax_amount DECIMAL(15,2) DEFAULT 0,
+  discount_rate DECIMAL(5,2) DEFAULT 0,
+  discount_amount DECIMAL(15,2) DEFAULT 0,
+  final_amount DECIMAL(15,2) DEFAULT 0,
+  notes TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (order_id) REFERENCES purchase_orders(id)
+);
+
+-- Chat历史记录表
+CREATE TABLE IF NOT EXISTS chat_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  company_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  session_id VARCHAR(100),
+  module VARCHAR(50),
+  input_text TEXT,
+  output_text TEXT,
+  output_data TEXT,
+  model VARCHAR(50),
+  status VARCHAR(20),
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+-- Quotations table
+CREATE TABLE IF NOT EXISTS quotations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  company_id INTEGER,
+  number VARCHAR(50) UNIQUE,
+  customer_id INTEGER,
+  amount DECIMAL(15,2) DEFAULT 0,
+  status VARCHAR(20) DEFAULT 'draft',
+  valid_until DATE,
+  created_by INTEGER,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  description TEXT DEFAULT '',
+  items TEXT DEFAULT '[]',
+  currency VARCHAR(10) DEFAULT 'CNY',
+  discount_rate DECIMAL(5,2) DEFAULT 0,
+  tax_rate DECIMAL(5,2) DEFAULT 0,
+  tax_amount DECIMAL(15,2) DEFAULT 0,
+  total_amount DECIMAL(15,2) DEFAULT 0
 );

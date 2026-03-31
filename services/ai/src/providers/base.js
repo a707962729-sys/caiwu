@@ -5,6 +5,7 @@ class BaseAIProvider {
   constructor(config) {
     this.config = config;
     this.name = 'base';
+    this.supportsVision = false;
   }
 
   /**

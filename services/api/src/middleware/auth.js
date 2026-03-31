@@ -3,6 +3,9 @@ const bcrypt = require('bcryptjs');
 const config = require('../config');
 const { getDatabase } = require('../database');
 
+// 内部 API Key（用于 AI 工具等内部服务调用）
+const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || 'caiwu-internal-service-key-2024';
+
 /**
  * 生成JWT Token
  */
@@ -49,6 +52,13 @@ async function verifyPassword(password, hash) {
  * 认证中间件
  */
 function authMiddleware(req, res, next) {
+  // Check internal API key first
+  const internalKey = req.headers['x-internal-api-key'];
+  if (internalKey && internalKey === INTERNAL_API_KEY) {
+    req.user = { id: 0, role: 'boss', companyId: 1, username: 'internal-service', isInternal: true };
+    return next();
+  }
+  
   const authHeader = req.headers.authorization;
   
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -124,6 +134,25 @@ function requireRole(allowedRoles) {
 }
 
 /**
+ * 内部 API Key 认证中间件（用于 AI 工具等内部服务）
+ */
+function internalApiKeyMiddleware(req, res, next) {
+  const apiKey = req.headers['x-internal-api-key'];
+  if (apiKey && apiKey === INTERNAL_API_KEY) {
+    // 内部服务调用，设置虚拟超级用户
+    req.user = {
+      id: 0,
+      role: 'boss',
+      companyId: 1,
+      username: 'internal-service',
+      isInternal: true
+    };
+    return next();
+  }
+  next();
+}
+
+/**
  * 权限检查中间件
  */
 function permissionMiddleware(module, action) {
@@ -135,10 +164,10 @@ function permissionMiddleware(module, action) {
         message: '未认证'
       });
     }
-    
+
     const role = req.user.role;
     const roleConfig = config.roles[role];
-    
+
     if (!roleConfig) {
       return res.status(403).json({
         success: false,
@@ -179,7 +208,11 @@ async function getCurrentUser(userId) {
   const { getDatabaseCompat } = require('../database');
   const db = getDatabaseCompat();
   const user = db.prepare(`
-    SELECT u.*, c.name as company_name
+    SELECT u.id, u.company_id, u.username, u.name, u.real_name, u.email, u.phone, u.role,
+           u.department, u.position, u.status, u.supervisor_id, u.department_id,
+           u.last_login_at, u.created_at, u.id_card, u.hire_date, u.employee_status,
+           u.avatar, u.updated_at,
+           c.name as company_name
     FROM users u
     LEFT JOIN companies c ON u.company_id = c.id
     WHERE u.id = ? AND u.status = 'active'
@@ -202,5 +235,7 @@ module.exports = {
   roleMiddleware,
   requireRole,
   permissionMiddleware,
-  getCurrentUser
+  internalApiKeyMiddleware,
+  getCurrentUser,
+  INTERNAL_API_KEY
 };

@@ -184,9 +184,10 @@
             {{ formatDate(row.created_at) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="140" fixed="right">
+        <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click.stop="handleEdit(row)">编辑</el-button>
+            <el-button link type="warning" @click.stop="handleReview(row)">审核</el-button>
             <el-button link type="danger" @click.stop="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
@@ -405,6 +406,8 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
+import { useSafeNavigate } from '@/composables/useNavigation'
 import { ElMessage } from 'element-plus'
 import { 
   Plus, Download, Search, Document, CircleCheck, Clock, Money
@@ -424,6 +427,10 @@ import { customerApi } from '@/api/customer'
 import { supplierApi } from '@/api/supplier'
 import type { FormInstance, FormRules } from 'element-plus'
 import dayjs from 'dayjs'
+
+const router = useRouter()
+const route = useRoute()
+const { safeNavigate } = useSafeNavigate()
 
 // 加载状态
 const loading = ref(false)
@@ -624,6 +631,10 @@ const handleRowClick = (row: Contract) => {
   drawerVisible.value = true
 }
 
+const handleReview = (row: Contract) => {
+  safeNavigate(`/contracts/review/${row.id}`)
+}
+
 // 签约方类型变更
 const handlePartyTypeChange = (val: 'customer' | 'supplier') => {
   formData.party_id = 0
@@ -773,6 +784,12 @@ const resetForm = () => {
 
 // 初始化
 onMounted(() => {
+  // 如果 URL 有 ?action=create，打开新建弹窗
+  if (route.query.action === 'create') {
+    resetForm()
+    loadPartyOptions('customer')
+    dialogVisible.value = true
+  }
   loadData()
   loadStats()
 })

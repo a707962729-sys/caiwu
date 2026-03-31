@@ -15,7 +15,7 @@ module.exports = {
   
   // 数据库配置
   database: {
-    path: process.env.DATABASE_PATH || path.join(__dirname, '../../database/caiwu.db')
+    path: process.env.DATABASE_PATH || path.join(__dirname, '../../../data/caiwu.db')
   },
   
   // 文件上传配置

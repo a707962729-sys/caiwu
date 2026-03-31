@@ -172,6 +172,37 @@ router.post('/check-out',
 
 /**
  * 获取考勤统计
+ * GET /api/attendance/employee/:id - 获取员工考勤记录
+ */
+router.get('/employee/:id',
+  permissionMiddleware('attendance', 'read'),
+  asyncHandler(async (req, res) => {
+    const db = getDatabaseCompat();
+    const { id } = req.params;
+    const { month } = req.query;
+    const companyId = req.user.companyId;
+    
+    let whereClause = 'WHERE a.company_id = ? AND a.employee_id = ?';
+    const params = [companyId, parseInt(id)];
+    
+    if (month) {
+      whereClause += ' AND a.date LIKE ?';
+      params.push(`${month}-%`);
+    }
+    
+    const records = db.prepare(`
+      SELECT a.*, e.name as employee_name
+      FROM attendance a
+      LEFT JOIN employees e ON a.employee_id = e.id
+      ${whereClause}
+      ORDER BY a.date DESC
+    `).all(...params);
+    
+    res.json({ success: true, data: records });
+  })
+);
+
+/**
  * GET /api/attendance/stats
  */
 router.get('/stats',
@@ -202,14 +233,14 @@ router.get('/stats',
     const stats = db.prepare(`
       SELECT 
         COUNT(*) as total_days,
-        SUM(CASE WHEN status = 'normal' THEN 1 ELSE 0 END) as normal_days,
-        SUM(CASE WHEN status = 'late' THEN 1 ELSE 0 END) as late_days,
-        SUM(CASE WHEN status = 'early_leave' THEN 1 ELSE 0 END) as early_leave_days,
-        SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END) as absent_days,
-        SUM(CASE WHEN status = 'leave' THEN 1 ELSE 0 END) as leave_days,
-        SUM(work_hours) as total_work_hours,
-        SUM(overtime_hours) as total_overtime_hours
-      FROM attendance
+        SUM(CASE WHEN a.status = 'normal' THEN 1 ELSE 0 END) as normal_days,
+        SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) as late_days,
+        SUM(CASE WHEN a.status = 'early_leave' THEN 1 ELSE 0 END) as early_leave_days,
+        SUM(CASE WHEN a.status = 'absent' THEN 1 ELSE 0 END) as absent_days,
+        SUM(CASE WHEN a.status = 'leave' THEN 1 ELSE 0 END) as leave_days,
+        SUM(a.work_hours) as total_work_hours,
+        SUM(a.overtime_hours) as total_overtime_hours
+      FROM attendance a
       ${whereClause}
     `).get(...params);
     

@@ -144,15 +144,12 @@ router.post('/',
     
     const result = db.prepare(`
       INSERT INTO orders (
-        company_id, order_no, name, contract_id, order_type, partner_id,
-        amount, tax_amount, total_amount, currency, start_date, end_date,
-        responsible_user_id, description, notes, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        company_id, order_no, name, contract_id, type, partner_id,
+        total_amount, responsible_user_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       companyId, order_no, data.name, data.contract_id || null, data.order_type || null,
-      data.partner_id || null, data.amount, data.tax_amount || 0, totalAmount, data.currency,
-      data.start_date || null, data.end_date || null, data.responsible_user_id || null,
-      data.description || null, data.notes || null, req.user.id
+      data.partner_id || null, totalAmount, data.responsible_user_id || null
     );
     
     const newOrder = db.prepare('SELECT * FROM orders WHERE id = ?').get(result.lastInsertRowid);
@@ -180,7 +177,7 @@ router.put('/:id',
     
     const updates = [];
     const values = [];
-    const allowedFields = ['name', 'contract_id', 'order_type', 'partner_id', 'amount', 'tax_amount', 'currency', 'start_date', 'end_date', 'responsible_user_id', 'status', 'progress', 'description', 'notes'];
+    const allowedFields = ['name', 'contract_id', 'type', 'partner_id', 'total_amount', 'currency', 'start_date', 'end_date', 'responsible_user_id', 'status', 'progress', 'description', 'notes'];
     
     for (const [key, value] of Object.entries(req.body)) {
       if (allowedFields.includes(key) && value !== undefined) {
@@ -190,11 +187,9 @@ router.put('/:id',
     }
     
     // 重新计算总价
-    if (req.body.amount !== undefined || req.body.tax_amount !== undefined) {
-      const amount = req.body.amount || order.amount;
-      const tax = req.body.tax_amount !== undefined ? req.body.tax_amount : order.tax_amount;
+    if (req.body.total_amount !== undefined) {
       updates.push('total_amount = ?');
-      values.push(amount + tax);
+      values.push(req.body.total_amount);
     }
     
     if (updates.length === 0) {

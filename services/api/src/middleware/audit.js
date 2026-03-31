@@ -143,6 +143,18 @@ function auditMiddleware(options) {
  */
 const AuditLogger = {
   /**
+   * 别名方法，兼容 salaries.js 的 AuditLog.create() 调用方式
+   */
+  create(userId, module, recordId, newData, req) {
+    return this.logCreate(module, recordId, newData, req);
+  },
+  /**
+   * 别名方法，兼容 salaries.js 的 AuditLog.update() 调用方式
+   */
+  update(userId, module, recordId, oldData, newData, req) {
+    return this.logUpdate(module, recordId, oldData, newData, req);
+  },
+  /**
    * 记录创建操作
    */
   logCreate(module, recordId, newData, req) {
@@ -295,5 +307,6 @@ const AuditLogger = {
 module.exports = {
   logAudit,
   auditMiddleware,
-  AuditLogger
+  AuditLogger,
+  AuditLog: AuditLogger
 };

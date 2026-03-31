@@ -296,24 +296,142 @@ router.get('/balance-sheet',
 
 /**
  * @route   GET /api/financial-reports/profit-loss
- * @desc    利润表（别名）
+ * @desc    利润表（支持 startDate/endDate 或 period_year/period_month）
  */
 router.get('/profit-loss',
   permissionMiddleware('financial-reports', 'read'),
   asyncHandler(async (req, res) => {
-    const { period_year, period_month } = req.query;
-    
-    // 返回模拟数据（需要初始化会计科目后才能生成真实数据）
+    const db = getDatabaseCompat();
+    const { startDate, endDate, period_year, period_month } = req.query;
+    const companyId = req.user.companyId;
+
+    let year, month;
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      year = start.getFullYear();
+      month = start.getMonth() + 1;
+    } else {
+      year = parseInt(period_year) || new Date().getFullYear();
+      month = parseInt(period_month) || new Date().getMonth() + 1;
+    }
+
+    // 检查会计科目表是否存在
+    let hasAccountingSchema = true;
+    try {
+      db.prepare('SELECT 1 FROM accounting_subjects LIMIT 1').get();
+    } catch (e) {
+      hasAccountingSchema = false;
+    }
+
+    if (!hasAccountingSchema) {
+      // 返回模拟数据（与前端 fallback 一致）
+      const trend = [];
+      const daysInMonth = new Date(year, month, 0).getDate();
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        trend.push({
+          date: dateStr,
+          income: 0,
+          expense: 0
+        });
+      }
+      return res.json({
+        success: true,
+        code: 200,
+        data: {
+          totalIncome: 0,
+          totalExpense: 0,
+          netProfit: 0,
+          incomeByCategory: [],
+          expenseByCategory: [],
+          trend,
+          _notice: '会计科目表未初始化，使用空数据'
+        }
+      });
+    }
+
+    // 获取收入类科目
+    const incomeSubjects = db.prepare(`
+      SELECT * FROM accounting_subjects
+      WHERE company_id = ? AND subject_type = 'income' AND is_enabled = 1
+      ORDER BY subject_code ASC
+    `).all(companyId);
+
+    // 获取费用类科目
+    const expenseSubjects = db.prepare(`
+      SELECT * FROM accounting_subjects
+      WHERE company_id = ? AND subject_type = 'expense' AND is_enabled = 1
+      ORDER BY subject_code ASC
+    `).all(companyId);
+
+    // 计算期间内每天的收入/支出（用于趋势图）
+    const trend = [];
+    const daysInMonth = new Date(year, month, 0).getDate();
+    for (let d = 1; d <= daysInMonth; d++) {
+      let dailyIncome = 0;
+      let dailyExpense = 0;
+
+      for (const subject of incomeSubjects) {
+        const result = db.prepare(`
+          SELECT COALESCE(SUM(ve.credit_amount - ve.debit_amount), 0) as amount
+          FROM voucher_entries ve
+          JOIN vouchers v ON ve.voucher_id = v.id
+          WHERE ve.subject_id = ? AND v.company_id = ? AND v.status = 'posted'
+            AND v.period_year = ? AND v.period_month = ? AND v.period_day = ?
+        `).get(subject.id, companyId, year, month, d);
+        dailyIncome += Math.max(0, result.amount);
+      }
+
+      for (const subject of expenseSubjects) {
+        const result = db.prepare(`
+          SELECT COALESCE(SUM(ve.debit_amount - ve.credit_amount), 0) as amount
+          FROM voucher_entries ve
+          JOIN vouchers v ON ve.voucher_id = v.id
+          WHERE ve.subject_id = ? AND v.company_id = ? AND v.status = 'posted'
+            AND v.period_year = ? AND v.period_month = ? AND v.period_day = ?
+        `).get(subject.id, companyId, year, month, d);
+        dailyExpense += Math.max(0, result.amount);
+      }
+
+      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      trend.push({ date: dateStr, income: dailyIncome, expense: dailyExpense });
+    }
+
+    const totalIncome = trend.reduce((s, t) => s + t.income, 0);
+    const totalExpense = trend.reduce((s, t) => s + t.expense, 0);
+
+    const incomeByCategory = incomeSubjects.map(s => {
+      const amount = db.prepare(`
+        SELECT COALESCE(SUM(ve.credit_amount - ve.debit_amount), 0) as amount
+        FROM voucher_entries ve JOIN vouchers v ON ve.voucher_id = v.id
+        WHERE ve.subject_id = ? AND v.company_id = ? AND v.status = 'posted'
+          AND v.period_year = ? AND v.period_month = ?
+      `).get(s.id, companyId, year, month);
+      const amt = Math.max(0, amount.amount);
+      return { category: s.subject_name, amount: amt, percentage: totalIncome > 0 ? Math.round(amt / totalIncome * 100) : 0 };
+    }).filter(i => i.amount > 0);
+
+    const expenseByCategory = expenseSubjects.map(s => {
+      const amount = db.prepare(`
+        SELECT COALESCE(SUM(ve.debit_amount - ve.credit_amount), 0) as amount
+        FROM voucher_entries ve JOIN vouchers v ON ve.voucher_id = v.id
+        WHERE ve.subject_id = ? AND v.company_id = ? AND v.status = 'posted'
+          AND v.period_year = ? AND v.period_month = ?
+      `).get(s.id, companyId, year, month);
+      const amt = Math.max(0, amount.amount);
+      return { category: s.subject_name, amount: amt, percentage: totalExpense > 0 ? Math.round(amt / totalExpense * 100) : 0 };
+    }).filter(i => i.amount > 0);
+
     res.json({
       success: true,
+      code: 200,
       data: {
-        period: { year: period_year || new Date().getFullYear(), month: period_month || new Date().getMonth() + 1 },
-        incomes: [],
-        expenses: [],
-        totalIncome: 0,
-        totalExpense: 0,
-        netProfit: 0,
-        message: '请先初始化会计科目数据'
+        totalIncome,
+        totalExpense,
+        netProfit: totalIncome - totalExpense,
+        incomeByCategory,
+        expenseByCategory,
+        trend
       }
     });
   })

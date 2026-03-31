@@ -20,46 +20,30 @@ router.get('/',
     const { page = 1, pageSize = 20, search, partner_id, status, startDate, endDate } = req.query;
     const companyId = req.user.companyId;
     
-    let whereClause = 'WHERE r.company_id = ? AND r.type = ?';
+    let whereClause = 'WHERE company_id = ? AND type = ?';
     const params = [companyId, 'payable'];
     
     if (search) {
-      whereClause += ' AND (r.rp_no LIKE ? OR p.name LIKE ?)';
-      params.push(`%${search}%`, `%${search}%`);
-    }
-    
-    if (partner_id) {
-      whereClause += ' AND r.partner_id = ?';
-      params.push(partner_id);
+      whereClause += ' AND (partner_name LIKE ?)';
+      params.push(`%${search}%`);
     }
     
     if (status) {
-      whereClause += ' AND r.status = ?';
+      whereClause += ' AND status = ?';
       params.push(status);
     }
     
-    if (startDate) {
-      whereClause += ' AND r.due_date >= ?';
-      params.push(startDate);
-    }
-    
-    if (endDate) {
-      whereClause += ' AND r.due_date <= ?';
-      params.push(endDate);
-    }
-    
     // 统计
-    const countResult = db.prepare(`SELECT COUNT(*) as total FROM receivables_payables r ${whereClause}`).get(...params);
+    const countResult = db.prepare(`SELECT COUNT(*) as total FROM receivables_payables ${whereClause}`).get(...params);
     const total = countResult.total;
     
     // 查询
     const offset = (page - 1) * pageSize;
     const list = db.prepare(`
-      SELECT r.*, p.name as partner_name
-      FROM receivables_payables r
-      LEFT JOIN partners p ON r.partner_id = p.id
+      SELECT *
+      FROM receivables_payables
       ${whereClause}
-      ORDER BY r.due_date ASC
+      ORDER BY created_at DESC
       LIMIT ? OFFSET ?
     `).all(...params, pageSize, offset);
     
@@ -87,9 +71,8 @@ router.get('/stats',
       SELECT 
         COUNT(*) as total_count,
         SUM(amount) as total_amount,
-        SUM(paid_amount) as paid_amount,
-        SUM(remaining_amount) as unpaid_amount,
-        SUM(CASE WHEN status = 'overdue' THEN remaining_amount ELSE 0 END) as overdue_amount
+        SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END) as paid_amount,
+        SUM(CASE WHEN status != 'paid' THEN amount ELSE 0 END) as unpaid_amount
       FROM receivables_payables
       WHERE company_id = ? AND type = 'payable'
     `).get(companyId);
@@ -111,16 +94,13 @@ router.get('/aging',
     const byPeriod = db.prepare(`
       SELECT 
         CASE 
-          WHEN julianday('now') - julianday(due_date) < 0 THEN '未到期'
-          WHEN julianday('now') - julianday(due_date) < 30 THEN '0-30天'
-          WHEN julianday('now') - julianday(due_date) < 60 THEN '30-60天'
-          WHEN julianday('now') - julianday(due_date) < 90 THEN '60-90天'
-          ELSE '90天以上'
+          WHEN status = 'paid' THEN '已付款'
+          ELSE '未付款'
         END as period,
         COUNT(*) as count,
-        SUM(remaining_amount) as amount
+        SUM(amount) as amount
       FROM receivables_payables
-      WHERE company_id = ? AND type = 'payable' AND status IN ('pending', 'partial')
+      WHERE company_id = ? AND type = 'payable'
       GROUP BY period
     `).all(companyId);
     

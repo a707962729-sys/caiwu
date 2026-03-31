@@ -7,13 +7,13 @@ const { ErrorTypes } = require('./error');
 function validate(schema, property = 'body') {
   return (req, res, next) => {
     const data = req[property];
-    
+
     const { error, value } = schema.validate(data, {
       abortEarly: false,
       stripUnknown: true,
       convert: true
     });
-    
+
     if (error) {
       const details = error.details.map(d => ({
         field: d.path.join('.'),
@@ -21,7 +21,7 @@ function validate(schema, property = 'body') {
       }));
       return next(ErrorTypes.ValidationError(details));
     }
-    
+
     // 将验证后的值替换原始值
     req[property] = value;
     next();
@@ -34,11 +34,11 @@ function validate(schema, property = 'body') {
 function validateId(paramName = 'id') {
   return (req, res, next) => {
     const id = parseInt(req.params[paramName]);
-    
+
     if (isNaN(id) || id <= 0) {
       return next(ErrorTypes.BadRequest(`无效的${paramName}`));
     }
-    
+
     req.params[paramName] = id;
     next();
   };
@@ -81,21 +81,22 @@ const userSchemas = {
     department: Joi.string().max(100).allow(''),
     position: Joi.string().max(100).allow('')
   }),
-  
+
   update: Joi.object({
     real_name: Joi.string().min(2).max(50).optional(),
     email: Joi.string().email().allow('').optional(),
     phone: Joi.string().max(20).allow('').optional(),
     department: Joi.string().max(100).allow('').optional(),
     position: Joi.string().max(100).allow('').optional(),
-    status: Joi.string().valid('active', 'inactive', 'suspended').optional().allow('')
+    status: Joi.string().valid('active', 'inactive', 'suspended').optional().allow(''),
+    role: Joi.string().valid('boss', 'accountant', 'employee').optional()
   }).min(1), // 至少需要一个字段
-  
+
   login: Joi.object({
     username: Joi.string().required(),
     password: Joi.string().required()
   }),
-  
+
   changePassword: Joi.object({
     oldPassword: Joi.string().required(),
     newPassword: Joi.string().min(6).max(100).required()
@@ -111,6 +112,7 @@ const contractSchemas = {
     name: Joi.string().max(200).required(),
     partner_id: Joi.number().integer().positive().allow(null), // 可选，允许创建合同时暂不关联合作伙伴
     contract_type: Joi.string().max(50),
+    type: Joi.string().max(50), // 兼容前端 type 字段
     amount: Joi.number().min(0).required(),
     currency: Joi.string().max(10).default('CNY'),
     start_date: Joi.date().iso().allow(null),
@@ -120,12 +122,19 @@ const contractSchemas = {
     payment_terms: Joi.string().allow(''),
     terms_and_conditions: Joi.string().allow(''),
     notes: Joi.string().allow('')
+  }).custom((obj, helpers) => {
+    // 字段标准化：type → contract_type
+    if (!obj.contract_type && obj.type) {
+      obj.contract_type = obj.type;
+    }
+    return obj;
   }),
-  
+
   update: Joi.object({
     name: Joi.string().max(200),
     partner_id: Joi.number().integer().positive(),
     contract_type: Joi.string().max(50),
+    type: Joi.string().max(50),
     amount: Joi.number().min(0),
     currency: Joi.string().max(10),
     start_date: Joi.date().iso().allow(null),
@@ -136,6 +145,11 @@ const contractSchemas = {
     payment_terms: Joi.string().allow(''),
     terms_and_conditions: Joi.string().allow(''),
     notes: Joi.string().allow('')
+  }).custom((obj, helpers) => {
+    if (!obj.contract_type && obj.type) {
+      obj.contract_type = obj.type;
+    }
+    return obj;
   })
 };
 
@@ -144,12 +158,15 @@ const contractSchemas = {
  */
 const orderSchemas = {
   create: Joi.object({
-    order_no: Joi.string().max(50).required(),
-    name: Joi.string().max(200).required(),
+    order_no: Joi.string().max(50),
+    name: Joi.string().max(200),
+    customer_name: Joi.string().max(200), // 兼容前端 customer_name 字段
     contract_id: Joi.number().integer().positive().allow(null),
+    type: Joi.string().max(50),
     order_type: Joi.string().max(50),
     partner_id: Joi.number().integer().positive().allow(null),
-    amount: Joi.number().min(0).required(),
+    customer_id: Joi.number().integer().positive().allow(null),
+    amount: Joi.number().min(0),
     tax_amount: Joi.number().min(0).default(0),
     currency: Joi.string().max(10).default('CNY'),
     start_date: Joi.date().iso().allow(null),
@@ -157,14 +174,29 @@ const orderSchemas = {
     responsible_user_id: Joi.number().integer().positive().allow(null),
     description: Joi.string().allow(''),
     notes: Joi.string().allow('')
+  }).custom((obj, helpers) => {
+    // 字段标准化：customer_name → name
+    if (!obj.name && obj.customer_name) {
+      obj.name = obj.customer_name;
+    }
+    // type → order_type
+    if (!obj.order_type && obj.type) {
+      obj.order_type = obj.type;
+    }
+    if (!obj.name) {
+      return helpers.error('any.required', { message: '"name" is required' });
+    }
+    return obj;
   }),
-  
+
   update: Joi.object({
     name: Joi.string().max(200),
+    customer_name: Joi.string().max(200),
     contract_id: Joi.number().integer().positive().allow(null),
+    type: Joi.string().max(50),
     order_type: Joi.string().max(50),
     partner_id: Joi.number().integer().positive().allow(null),
-    amount: Joi.number().min(0),
+    total_amount: Joi.number().min(0),
     tax_amount: Joi.number().min(0),
     currency: Joi.string().max(10),
     start_date: Joi.date().iso().allow(null),
@@ -174,6 +206,11 @@ const orderSchemas = {
     progress: Joi.number().min(0).max(100),
     description: Joi.string().allow(''),
     notes: Joi.string().allow('')
+  }).custom((obj, helpers) => {
+    if (!obj.order_type && obj.type) {
+      obj.order_type = obj.type;
+    }
+    return obj;
   })
 };
 
@@ -182,7 +219,7 @@ const orderSchemas = {
  */
 const transactionSchemas = {
   create: Joi.object({
-    transaction_no: Joi.string().max(50).allow('', null), // 可选，后端自动生成
+    transaction_no: Joi.string().max(50).allow('', null), // 可选,后端自动生成
     transaction_date: Joi.alternatives().try(Joi.date().iso(), Joi.string()).required(),
     transaction_type: Joi.string().valid('income', 'expense', 'transfer').required(),
     category: Joi.string().max(50).required(),
@@ -201,7 +238,7 @@ const transactionSchemas = {
     voucher_no: Joi.string().max(50).allow(''),
     notes: Joi.string().allow('')
   }),
-  
+
   update: Joi.object({
     transaction_date: Joi.date().iso(),
     transaction_type: Joi.string().valid('income', 'expense', 'transfer'),
@@ -229,14 +266,15 @@ const transactionSchemas = {
  */
 const reimbursementSchemas = {
   create: Joi.object({
-    reimbursement_no: Joi.string().max(50).required(),
-    title: Joi.string().max(200).required(),
+    reimbursement_no: Joi.string().max(50),
+    title: Joi.string().max(200),
+    description: Joi.string().allow(''), // 兼容前端 description 字段
     reimbursement_type: Joi.string().max(50),
+    type: Joi.string().max(50),
     amount: Joi.number().min(0).required(),
     currency: Joi.string().max(10).default('CNY'),
-    application_date: Joi.date().iso().required(),
+    application_date: Joi.date().iso().allow(null),
     expense_date: Joi.date().iso().allow(null),
-    description: Joi.string().allow(''),
     notes: Joi.string().allow(''),
     items: Joi.array().items(Joi.object({
       item_date: Joi.date().iso().allow(null),
@@ -247,19 +285,37 @@ const reimbursementSchemas = {
       invoice_no: Joi.string().max(50).allow(''),
       notes: Joi.string().allow('')
     }))
+  }).custom((obj, helpers) => {
+    // 字段标准化：description → title; type → reimbursement_type
+    if (!obj.title && obj.description) {
+      obj.title = obj.description;
+    }
+    if (!obj.reimbursement_type && obj.type) {
+      obj.reimbursement_type = obj.type;
+    }
+    if (!obj.title) {
+      return helpers.error('any.required', { message: '"title" is required' });
+    }
+    return obj;
   }),
-  
+
   update: Joi.object({
     title: Joi.string().max(200),
+    description: Joi.string().allow(''),
     reimbursement_type: Joi.string().max(50),
+    type: Joi.string().max(50),
     amount: Joi.number().min(0),
     currency: Joi.string().max(10),
     application_date: Joi.date().iso(),
     expense_date: Joi.date().iso().allow(null),
-    description: Joi.string().allow(''),
     notes: Joi.string().allow('')
+  }).custom((obj, helpers) => {
+    if (!obj.reimbursement_type && obj.type) {
+      obj.reimbursement_type = obj.type;
+    }
+    return obj;
   }),
-  
+
   approve: Joi.object({
     action: Joi.string().valid('approve', 'reject').required(),
     reject_reason: Joi.string().when('action', {
@@ -275,10 +331,11 @@ const reimbursementSchemas = {
  */
 const invoiceSchemas = {
   create: Joi.object({
-    // 兼容前端字段名（全部 optional，由 custom 验证器做最终校验）
+    // 兼容前端字段名(全部 optional,由 custom 验证器做最终校验)
     invoice_type: Joi.string().max(50),
     type: Joi.string().max(50),
-    invoice_no: Joi.string().max(50).required(),
+    invoice_no: Joi.string().max(50),
+    invoice_number: Joi.string().max(50), // 兼容前端 invoice_number 字段
     invoice_code: Joi.string().max(50).allow('', null),
     direction: Joi.string().valid('in', 'out'),
     type_dir: Joi.string().max(20),
@@ -296,42 +353,50 @@ const invoiceSchemas = {
     description: Joi.string().allow('', null),
     notes: Joi.string().allow('', null)
   }).custom((obj, helpers) => {
-    // 字段标准化：前端字段 → 后端字段
+    // 字段标准化:前端字段 → 后端字段
+    // invoice_number → invoice_no
+    if (!obj.invoice_no && obj.invoice_number) {
+      obj.invoice_no = obj.invoice_number;
+    }
     const type = obj.invoice_type || obj.type;
-    const issueDate = obj.issue_date || obj.invoice_date;
+    const issueDate = obj.issue_date ?? obj.invoice_date;
+    if (!issueDate) {
+      obj.issue_date = new Date().toISOString().slice(0, 10);
+    }
     const totalAmount = obj.total_amount ?? obj.amount;
     const amtBeforeTax = obj.amount_before_tax ?? (totalAmount ? Math.round(totalAmount / 1.06 * 100) / 100 : 0);
     const taxAmt = obj.tax_amount ?? (totalAmount ? Math.round(totalAmount - amtBeforeTax, 2) : 0);
-    const direction = obj.direction || obj.type_dir || 'in';
+    const direction = obj.direction || obj.type_dir || (obj.type === 'income' ? 'out' : obj.type === 'expense' ? 'in' : 'out');
 
+    if (!obj.invoice_no) return helpers.error('any.required', { message: '"invoice_no" is required' });
     if (!type) return helpers.error('any.required', { message: '"invoice_type" is required' });
-    if (!issueDate) return helpers.error('any.required', { message: '"issue_date" is required' });
     if (totalAmount === undefined || totalAmount === null) return helpers.error('any.required', { message: '"total_amount" is required' });
 
     // 统一转 ISO 日期字符串
-    const issueDateStr = typeof issueDate === 'string' ? issueDate : issueDate.toISOString().slice(0, 10);
+    const issueDateStr = typeof obj.issue_date === 'string' ? obj.issue_date : obj.issue_date.toISOString().slice(0, 10);
     const taxRate = obj.tax_rate ?? (type?.startsWith('vat') ? 6 : 0);
 
-    obj._std = { invoice_type: type, issue_date: issueDateStr, total_amount: totalAmount, amount_before_tax: amtBeforeTax, tax_amount: taxAmt, direction, tax_rate: taxRate };
+    obj._std = { invoice_no: obj.invoice_no, invoice_type: type, issue_date: issueDateStr, total_amount: totalAmount, amount_before_tax: amtBeforeTax, tax_amount: taxAmt, direction, tax_rate: taxRate };
     return obj;
   }),
 
   update: Joi.object({
+    invoice_no: Joi.string().max(50).allow('', null),  // 不允许修改但可接收
     invoice_type: Joi.string().max(50),
     type: Joi.string().max(50),
     invoice_code: Joi.string().max(50).allow('', null),
     partner_id: Joi.number().integer().positive().allow(null),
     contract_id: Joi.number().integer().positive().allow(null),
     order_id: Joi.number().integer().positive().allow(null),
-    issue_date: Joi.date().iso(),
-    invoice_date: Joi.date().iso(),
+    issue_date: Joi.any(),
+    invoice_date: Joi.any(),
     amount_before_tax: Joi.number().min(0),
     amount: Joi.number().min(0),
     tax_rate: Joi.number().min(0).max(100),
     tax_amount: Joi.number().min(0),
     total_amount: Joi.number().min(0),
     currency: Joi.string().max(10),
-    status: Joi.string().valid('pending', 'pending_review', 'verified', 'paid', 'cancelled'),
+    status: Joi.string().valid('pending', 'pending_review', 'verified', 'paid', 'cancelled', 'void'),
     description: Joi.string().allow('', null),
     notes: Joi.string().allow('', null)
   }).custom((obj, helpers) => {
@@ -367,7 +432,7 @@ const quotationSchemas = {
       notes: Joi.string().allow('')
     }))
   }),
-  
+
   update: Joi.object({
     customer_id: Joi.number().integer().positive(),
     title: Joi.string().max(200).allow(''),
@@ -406,7 +471,7 @@ const deliverySchemas = {
       notes: Joi.string().allow('')
     }))
   }),
-  
+
   update: Joi.object({
     order_id: Joi.number().integer().positive().allow(null),
     quotation_id: Joi.number().integer().positive().allow(null),
@@ -439,7 +504,7 @@ const receiptSchemas = {
     voucher_image: Joi.string().max(255).allow(''),
     notes: Joi.string().allow('')
   }),
-  
+
   update: Joi.object({
     order_id: Joi.number().integer().positive().allow(null),
     quotation_id: Joi.number().integer().positive().allow(null),
@@ -471,7 +536,7 @@ const subjectSchemas = {
     is_enabled: Joi.boolean().default(true),
     description: Joi.string().allow('')
   }),
-  
+
   update: Joi.object({
     subject_name: Joi.string().max(100),
     subject_type: Joi.string().valid('asset', 'liability', 'equity', 'income', 'expense'),
@@ -519,7 +584,7 @@ const voucherSchemas = {
       notes: Joi.string().allow('')
     })).required()
   }),
-  
+
   update: Joi.object({
     voucher_date: Joi.date().iso(),
     voucher_type: Joi.string().valid('general', 'receipt', 'payment', 'transfer'),

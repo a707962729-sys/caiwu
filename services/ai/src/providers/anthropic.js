@@ -9,6 +9,7 @@ class AnthropicProvider extends BaseAIProvider {
   constructor(config) {
     super(config);
     this.name = 'anthropic';
+    this.supportsVision = true;
     
     if (config.apiKey) {
       this.client = new Anthropic({

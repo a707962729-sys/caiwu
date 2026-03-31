@@ -1,0 +1,988 @@
+<template>
+  <div class="ai-chat-wrapper">
+    <!-- 悬浮按钮 -->
+    <transition name="fab">
+      <div v-if="!isOpen" class="chat-fab" @click="openChat">
+        <el-badge :value="unreadCount" :hidden="unreadCount === 0" :max="99">
+          <div class="fab-icon">
+            <el-icon :size="28"><ChatDotRound /></el-icon>
+          </div>
+        </el-badge>
+        <div class="fab-pulse"></div>
+      </div>
+    </transition>
+
+    <!-- 聊天面板 -->
+    <transition name="panel">
+      <div v-if="isOpen" class="chat-panel">
+        <!-- 头部 -->
+        <div class="chat-header">
+          <div class="header-info">
+            <div class="ai-avatar">
+              <el-icon :size="20"><MagicStick /></el-icon>
+            </div>
+            <div class="header-text">
+              <span class="ai-name">AI 财务助手</span>
+              <span class="ai-status">
+                <span class="status-dot"></span>
+                在线
+              </span>
+            </div>
+          </div>
+          <div class="header-actions">
+            <el-button text circle @click="clearHistory">
+              <el-icon><Delete /></el-icon>
+            </el-button>
+            <el-button text circle @click="closeChat">
+              <el-icon><Close /></el-icon>
+            </el-button>
+          </div>
+        </div>
+
+        <!-- 消息区域 -->
+        <div class="chat-messages" ref="messagesRef">
+          <!-- 欢迎消息 -->
+          <div v-if="messages.length === 0" class="welcome-tips">
+            <div class="welcome-icon">
+              <el-icon :size="48"><ChatDotRound /></el-icon>
+            </div>
+            <h3>您好，我是财务管家 AI 助手</h3>
+            <p>我可以帮您：</p>
+            <ul>
+              <li>回答财务相关问题</li>
+              <li>查询账目和报表数据</li>
+              <li>解读合同和票据内容</li>
+              <li>协助处理人事考勤</li>
+            </ul>
+            <div class="quick-prompts">
+              <el-tag
+                v-for="tip in quickPrompts"
+                :key="tip"
+                class="quick-prompt"
+                @click="sendQuickPrompt(tip)"
+              >
+                {{ tip }}
+              </el-tag>
+            </div>
+          </div>
+
+          <!-- 消息列表 -->
+          <div v-else class="message-list">
+            <div
+              v-for="(msg, index) in messages"
+              :key="index"
+              :class="['message-item', msg.role]"
+            >
+              <div class="message-avatar">
+                <el-avatar :size="32" :icon="msg.role === 'user' ? 'User' : 'MagicStick'" />
+              </div>
+              <div class="message-content">
+                <div class="message-bubble">
+                  <!-- 图片消息 -->
+                  <template v-if="msg.type === 'image'">
+                    <el-image
+                      :src="msg.content"
+                      :preview-src-list="[msg.content]"
+                      fit="cover"
+                      class="message-image"
+                    />
+                  </template>
+                  <!-- 文件消息 -->
+                  <template v-else-if="msg.type === 'file'">
+                    <div class="message-file">
+                      <el-icon><Document /></el-icon>
+                      <span class="file-name">{{ msg.fileName }}</span>
+                    </div>
+                  </template>
+                  <!-- 文字消息 -->
+                  <template v-else>
+                    <pre class="message-text">{{ msg.content }}</pre>
+                  </template>
+                </div>
+                <div class="message-time">{{ formatTime(msg.timestamp) }}</div>
+              </div>
+            </div>
+
+            <!-- 加载指示器 -->
+            <div v-if="isLoading" class="message-item assistant">
+              <div class="message-avatar">
+                <el-avatar :size="32" :icon="'MagicStick'" />
+              </div>
+              <div class="message-content">
+                <div class="message-bubble loading">
+                  <span class="loading-dot"></span>
+                  <span class="loading-dot"></span>
+                  <span class="loading-dot"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 输入区域 -->
+        <div class="chat-input-area">
+          <!-- 预览区 -->
+          <div v-if="previewFiles.length > 0" class="preview-area">
+            <div
+              v-for="(file, index) in previewFiles"
+              :key="index"
+              class="preview-item"
+            >
+              <el-image
+                v-if="file.type.startsWith('image/')"
+                :src="file.url"
+                fit="cover"
+                class="preview-image"
+              />
+              <div v-else class="preview-file">
+                <el-icon><Document /></el-icon>
+                <span>{{ file.name }}</span>
+              </div>
+              <div class="preview-remove" @click="removeFile(index)">
+                <el-icon><Close /></el-icon>
+              </div>
+            </div>
+          </div>
+
+          <div class="input-row">
+            <!-- 上传按钮 -->
+            <el-dropdown trigger="click" @command="handleUploadCommand">
+              <el-button text circle>
+                <el-icon><Plus /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="image">
+                    <el-icon><Picture /></el-icon>
+                    上传图片
+                  </el-dropdown-item>
+                  <el-dropdown-item command="file">
+                    <el-icon><Document /></el-icon>
+                    上传文件
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+
+            <!-- 输入框 -->
+            <el-input
+              v-model="inputText"
+              type="textarea"
+              :rows="1"
+              :autosize="{ minRows: 1, maxRows: 4 }"
+              placeholder="输入您的问题..."
+              resize="none"
+              @keydown.enter.exact.prevent="handleSend"
+              @input="autoResize"
+            />
+
+            <!-- 发送按钮 -->
+            <el-button
+              type="primary"
+              circle
+              :disabled="!canSend"
+              @click="handleSend"
+            >
+              <el-icon><Promotion /></el-icon>
+            </el-button>
+          </div>
+        </div>
+      </div>
+    </transition>
+
+    <!-- 隐藏的文件输入 -->
+    <input
+      ref="imageInputRef"
+      type="file"
+      accept="image/*"
+      multiple
+      style="display: none"
+      @change="handleImageChange"
+    />
+    <input
+      ref="fileInputRef"
+      type="file"
+      multiple
+      style="display: none"
+      @change="handleFileChange"
+    />
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, nextTick, watch } from 'vue'
+import { ChatDotRound, MagicStick, Plus, Picture, Document, Promotion, Close, Delete } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import { aiApi } from '@/api/ai'
+
+// ChatMessage 类型定义（内联避免Vite缓存问题）
+interface ChatMessage {
+  role: 'user' | 'assistant' | 'system'
+  content: string
+}
+
+// ==================== 类型定义 ====================
+interface FilePreview {
+  file: File
+  url: string
+  name: string
+  type: string
+}
+
+interface ChatMsg extends ChatMessage {
+  type?: 'text' | 'image' | 'file'
+  fileName?: string
+  timestamp: number
+}
+
+const STORAGE_KEY = 'ai_chat_messages'
+
+// ==================== 状态 ====================
+const isOpen = ref(false)
+const messages = ref<ChatMsg[]>([])
+const inputText = ref('')
+const isLoading = ref(false)
+const unreadCount = ref(0)
+const previewFiles = ref<FilePreview[]>([])
+const conversationId = ref<string>('')
+
+// Refs
+const messagesRef = ref<HTMLElement>()
+const imageInputRef = ref<HTMLInputElement>()
+const fileInputRef = ref<HTMLInputElement>()
+
+// ==================== 计算属性 ====================
+const canSend = computed(() => {
+  const hasText = inputText.value.trim().length > 0
+  const hasFiles = previewFiles.value.length > 0
+  return (hasText || hasFiles) && !isLoading.value
+})
+
+// 快捷提示
+const quickPrompts = [
+  '本月收支概况',
+  '查看待处理合同',
+  '应收账款统计',
+  '员工考勤汇总'
+]
+
+// ==================== 方法 ====================
+
+// 打开聊天
+function openChat() {
+  isOpen.value = true
+  unreadCount.value = 0
+  loadHistory()
+  nextTick(() => scrollToBottom())
+}
+
+// 关闭聊天
+function closeChat() {
+  isOpen.value = false
+}
+
+// 清除历史
+function clearHistory() {
+  messages.value = []
+  conversationId.value = ''
+  localStorage.removeItem(STORAGE_KEY)
+}
+
+// 加载历史记录
+function loadHistory() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY)
+    if (saved) {
+      const data = JSON.parse(saved)
+      messages.value = data.messages || []
+      conversationId.value = data.conversationId || ''
+    }
+  } catch (e) {
+    console.error('Failed to load chat history:', e)
+  }
+}
+
+// 保存历史记录
+function saveHistory() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      messages: messages.value,
+      conversationId: conversationId.value
+    }))
+  } catch (e) {
+    console.error('Failed to save chat history:', e)
+  }
+}
+
+// 发送快捷提示
+function sendQuickPrompt(prompt: string) {
+  inputText.value = prompt
+  handleSend()
+}
+
+// 发送消息
+async function handleSend() {
+  const text = inputText.value.trim()
+  const files = previewFiles.value
+
+  if (!text && files.length === 0) return
+
+  // 构建用户消息
+  const userMessages: ChatMsg[] = []
+
+  // 添加文字消息
+  if (text) {
+    userMessages.push({
+      role: 'user',
+      content: text,
+      type: 'text',
+      timestamp: Date.now()
+    })
+  }
+
+  // 添加图片/文件消息
+  for (const pf of files) {
+    if (pf.type.startsWith('image/')) {
+      userMessages.push({
+        role: 'user',
+        content: pf.url,
+        type: 'image',
+        timestamp: Date.now()
+      })
+    } else {
+      userMessages.push({
+        role: 'user',
+        content: pf.url,
+        type: 'file',
+        fileName: pf.name,
+        timestamp: Date.now()
+      })
+    }
+  }
+
+  // 添加到消息列表
+  messages.value.push(...userMessages)
+  inputText.value = ''
+  previewFiles.value = []
+  clearPreviews()
+
+  await nextTick()
+  scrollToBottom()
+
+  // 调用 AI
+  await getAIResponse(text, files)
+}
+
+// 获取 AI 响应
+async function getAIResponse(text: string, files: FilePreview[]) {
+  isLoading.value = true
+
+  try {
+    let response: string
+
+    // 如果有文件，先尝试上传
+    let uploadedUrls: { url: string; name: string; type: string }[] = []
+    for (const pf of files) {
+      try {
+        const formData = new FormData()
+        formData.append('file', pf.file)
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token') || ''}`
+          },
+          body: formData
+        })
+        const data = await res.json()
+        uploadedUrls.push({
+          url: data.url || data.path || `/uploads/${pf.name}`,
+          name: pf.name,
+          type: pf.type
+        })
+      } catch (e) {
+        console.error('Upload failed:', e)
+      }
+    }
+
+    // 构建上下文
+    const context: ChatMessage[] = messages.value.slice(-10).map(m => ({
+      role: m.role,
+      content: m.content
+    }))
+
+    // 构建消息内容
+    let messageContent = text
+    if (uploadedUrls.length > 0) {
+      const attachments = uploadedUrls.map(u =>
+        u.type.startsWith('image/') ? `![${u.name}](${u.url})` : `[${u.name}](${u.url})`
+      ).join('\n')
+      messageContent = text ? `${text}\n\n附件:\n${attachments}` : `请分析以下文件:\n${attachments}`
+    }
+
+    // 调用 AI API
+    const res = await aiApi.chat({
+      message: messageContent,
+      context: context,
+      conversationId: conversationId.value || undefined
+    })
+
+    response = res.response
+    if (res.conversationId) {
+      conversationId.value = res.conversationId
+    }
+  } catch (e: any) {
+    // 尝试备用 API
+    if (text) {
+      try {
+        const res = await aiApi.query({ question: text })
+        response = res.answer || res.data || '查询完成'
+      } catch (e2: any) {
+        response = `抱歉，发生了错误: ${e.message || e2.message || '未知错误'}`
+      }
+    } else {
+      response = '请提供问题或上传文件'
+    }
+  } finally {
+    isLoading.value = false
+  }
+
+  // 添加 AI 消息
+  messages.value.push({
+    role: 'assistant',
+    content: response,
+    type: 'text',
+    timestamp: Date.now()
+  })
+
+  saveHistory()
+  await nextTick()
+  scrollToBottom()
+}
+
+// 滚动到底部
+function scrollToBottom() {
+  if (messagesRef.value) {
+    messagesRef.value.scrollTop = messagesRef.value.scrollHeight
+  }
+}
+
+// 格式化时间
+function formatTime(timestamp: number): string {
+  const date = new Date(timestamp)
+  const now = new Date()
+  const isToday = date.toDateString() === now.toDateString()
+
+  if (isToday) {
+    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+  }
+  return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }) + ' ' +
+    date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+}
+
+// 处理上传命令
+function handleUploadCommand(command: string) {
+  if (command === 'image') {
+    imageInputRef.value?.click()
+  } else if (command === 'file') {
+    fileInputRef.value?.click()
+  }
+}
+
+// 处理图片选择
+function handleImageChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  if (!input.files) return
+
+  Array.from(input.files).forEach(file => {
+    const url = URL.createObjectURL(file)
+    previewFiles.value.push({ file, url, name: file.name, type: file.type })
+  })
+
+  input.value = ''
+}
+
+// 处理文件选择
+function handleFileChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  if (!input.files) return
+
+  Array.from(input.files).forEach(file => {
+    const url = URL.createObjectURL(file)
+    previewFiles.value.push({ file, url, name: file.name, type: file.type })
+  })
+
+  input.value = ''
+}
+
+// 移除文件
+function removeFile(index: number) {
+  const file = previewFiles.value[index]
+  URL.revokeObjectURL(file.url)
+  previewFiles.value.splice(index, 1)
+}
+
+// 清除预览
+function clearPreviews() {
+  previewFiles.value.forEach(f => URL.revokeObjectURL(f.url))
+  previewFiles.value = []
+}
+
+// 自动调整输入框高度
+function autoResize(e: Event) {
+  const textarea = e.target as HTMLTextAreaElement
+  textarea.style.height = 'auto'
+  textarea.style.height = Math.min(textarea.scrollHeight, 100) + 'px'
+}
+
+// 监听新消息
+watch(() => messages.value.length, () => {
+  if (!isOpen.value && messages.value.length > 0) {
+    unreadCount.value++
+  }
+})
+</script>
+
+<style lang="scss" scoped>
+.ai-chat-wrapper {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999;
+  font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+
+// 悬浮按钮
+.chat-fab {
+  position: relative;
+  cursor: pointer;
+
+  .fab-icon {
+    width: 56px;
+    height: 56px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.5);
+    transition: transform 0.3s, box-shadow 0.3s;
+
+    &:hover {
+      transform: scale(1.1);
+      box-shadow: 0 6px 28px rgba(102, 126, 234, 0.6);
+    }
+  }
+
+  .fab-pulse {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    animation: pulse 2s ease-out infinite;
+    z-index: -1;
+  }
+}
+
+@keyframes pulse {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.5;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.6);
+    opacity: 0;
+  }
+}
+
+// 聊天面板
+.chat-panel {
+  width: 380px;
+  height: 560px;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  @media (max-width: 480px) {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+  }
+}
+
+// 头部
+.chat-header {
+  padding: 16px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  .header-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .ai-avatar {
+    width: 40px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .header-text {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .ai-name {
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  .ai-status {
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    opacity: 0.9;
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    background: #67C23A;
+    border-radius: 50%;
+  }
+
+  .header-actions {
+    :deep(.el-button) {
+      color: #fff;
+      &:hover {
+        background: rgba(255, 255, 255, 0.2);
+      }
+    }
+  }
+}
+
+// 消息区域
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  background: #f5f7fa;
+
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 2px;
+  }
+}
+
+// 欢迎提示
+.welcome-tips {
+  text-align: center;
+  padding: 32px 16px;
+  color: #606266;
+
+  .welcome-icon {
+    width: 80px;
+    height: 80px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    margin: 0 auto 20px;
+  }
+
+  h3 {
+    font-size: 18px;
+    margin-bottom: 12px;
+    color: #303133;
+  }
+
+  p {
+    font-size: 14px;
+    margin-bottom: 8px;
+  }
+
+  ul {
+    text-align: left;
+    display: inline-block;
+    font-size: 14px;
+    line-height: 1.8;
+
+    li::before {
+      content: '•';
+      color: #667eea;
+      margin-right: 8px;
+    }
+  }
+
+  .quick-prompts {
+    margin-top: 20px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+  }
+
+  .quick-prompt {
+    cursor: pointer;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 13px;
+    transition: all 0.3s;
+
+    &:hover {
+      background: #667eea;
+      color: #fff;
+      border-color: #667eea;
+    }
+  }
+}
+
+// 消息列表
+.message-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.message-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+
+  &.user {
+    flex-direction: row-reverse;
+
+    .message-bubble {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #fff;
+      border-radius: 18px 18px 4px 18px;
+    }
+
+    .message-time {
+      text-align: right;
+    }
+  }
+
+  &.assistant {
+    .message-bubble {
+      background: #fff;
+      color: #303133;
+      border-radius: 18px 18px 18px 4px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    }
+  }
+}
+
+.message-content {
+  max-width: 75%;
+}
+
+.message-bubble {
+  padding: 12px 16px;
+  font-size: 14px;
+  line-height: 1.6;
+  word-break: break-word;
+
+  .message-text {
+    margin: 0;
+    white-space: pre-wrap;
+    font-family: inherit;
+  }
+
+  .message-image {
+    max-width: 200px;
+    max-height: 200px;
+    border-radius: 8px;
+  }
+
+  .message-file {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: 8px;
+
+    .file-name {
+      max-width: 160px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  &.loading {
+    display: flex;
+    gap: 4px;
+    padding: 16px 20px;
+  }
+}
+
+.loading-dot {
+  width: 8px;
+  height: 8px;
+  background: #909399;
+  border-radius: 50%;
+  animation: bounce 1.4s ease-in-out infinite;
+
+  &:nth-child(1) { animation-delay: 0s; }
+  &:nth-child(2) { animation-delay: 0.2s; }
+  &:nth-child(3) { animation-delay: 0.4s; }
+}
+
+@keyframes bounce {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.5; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+.message-time {
+  font-size: 11px;
+  color: #909399;
+  margin-top: 4px;
+  padding: 0 4px;
+}
+
+// 输入区域
+.chat-input-area {
+  padding: 12px 16px;
+  background: #fff;
+  border-top: 1px solid #e4e7ed;
+}
+
+.preview-area {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.preview-item {
+  position: relative;
+  width: 60px;
+  height: 60px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #e4e7ed;
+
+  .preview-image {
+    width: 100%;
+    height: 100%;
+  }
+
+  .preview-file {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: #f5f7fa;
+    font-size: 12px;
+    color: #606266;
+    gap: 4px;
+
+    span {
+      max-width: 50px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  .preview-remove {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 18px;
+    height: 18px;
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: 50%;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 12px;
+
+    &:hover {
+      background: rgba(0, 0, 0, 0.8);
+    }
+  }
+}
+
+.input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+
+  :deep(.el-textarea) {
+    flex: 1;
+
+    .el-textarea__inner {
+      border: none;
+      background: #f5f7fa;
+      border-radius: 20px;
+      padding: 10px 14px;
+      resize: none;
+
+      &:focus {
+        background: #f0f2f5;
+      }
+    }
+  }
+
+  :deep(.el-button--primary) {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+
+    &:disabled {
+      background: #c0c4cc;
+    }
+  }
+}
+
+// 过渡动画
+.fab-enter-active, .fab-leave-active {
+  transition: all 0.3s ease;
+}
+.fab-enter-from, .fab-leave-to {
+  opacity: 0;
+  transform: scale(0.5);
+}
+
+.panel-enter-active, .panel-leave-active {
+  transition: all 0.3s ease;
+}
+.panel-enter-from, .panel-leave-to {
+  opacity: 0;
+  transform: translateY(20px) scale(0.95);
+}
+</style>

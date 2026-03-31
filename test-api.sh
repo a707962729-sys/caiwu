@@ -1,96 +1,131 @@
 #!/bin/bash
-# 财务管家 API 测试脚本
+cd /Users/mac/caiwu
 
-API_URL="http://localhost:3000/api"
-TOKEN=""
-
-echo "========================================="
-echo "  财务管家 API 测试"
-echo "========================================="
-
-# 1. 登录获取 Token
-echo ""
-echo "【1. 登录测试】"
-LOGIN_RESPONSE=$(curl -s -X POST "$API_URL/auth/login" \
+# Get token
+LOGIN_RESP=$(curl -s -X POST http://localhost:3000/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"admin123"}')
-echo "$LOGIN_RESPONSE" | python3 -m json.tool 2>/dev/null || echo "$LOGIN_RESPONSE"
-TOKEN=$(echo "$LOGIN_RESPONSE" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
-echo "Token: ${TOKEN:0:20}..."
 
-# 2. 商品档案
-echo ""
-echo "【2. 商品档案测试】"
-curl -s -X GET "$API_URL/products?page=1&pageSize=5" \
-  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool 2>/dev/null | head -20
+TOKEN=$(echo "$LOGIN_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['data']['token'])")
+echo "Token: ${TOKEN:0:30}..."
 
-# 3. 客户管理
-echo ""
-echo "【3. 客户管理测试】"
-curl -s -X GET "$API_URL/customers?page=1&pageSize=5" \
-  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool 2>/dev/null | head -20
-
-# 4. 库存管理
-echo ""
-echo "【4. 库存管理测试】"
-curl -s -X GET "$API_URL/inventory?page=1&pageSize=5" \
-  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool 2>/dev/null | head -20
-
-# 5. 库存预警
-echo ""
-echo "【5. 库存预警测试】"
-curl -s -X GET "$API_URL/inventory/low-stock" \
-  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool 2>/dev/null | head -20
-
-# 6. 采购订单
-echo ""
-echo "【6. 采购订单测试】"
-curl -s -X GET "$API_URL/purchase-orders?page=1&pageSize=5" \
-  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool 2>/dev/null | head -20
-
-# 7. 销售订单
-echo ""
-echo "【7. 销售订单测试】"
-curl -s -X GET "$API_URL/orders?page=1&pageSize=5" \
-  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool 2>/dev/null | head -20
-
-# 8. 财务智能 - 利润计算
-echo ""
-echo "【8. 财务智能 - 利润计算】"
-curl -s -X GET "$API_URL/finance/profit/calculate?startDate=2026-01-01&endDate=2026-12-31" \
-  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool 2>/dev/null
-
-# 9. 财务智能 - 应收账龄
-echo ""
-echo "【9. 财务智能 - 应收账龄】"
-curl -s -X GET "$API_URL/finance/receivables/aging" \
-  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool 2>/dev/null
-
-# 10. OpenClaw 集成
-echo ""
-echo "【10. OpenClaw 集成测试】"
-curl -s -X GET "$API_URL/openclaw/health" \
-  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool 2>/dev/null
-
-# 11. 报价单（新路由）
-echo ""
-echo "【11. 报价单测试】"
-curl -s -X GET "$API_URL/quotations?page=1&pageSize=5" \
-  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool 2>/dev/null | head -20
-
-# 12. 销售订单（新路由）
-echo ""
-echo "【12. 销售订单测试（新）】"
-curl -s -X GET "$API_URL/sales-orders?page=1&pageSize=5" \
-  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool 2>/dev/null | head -20
-
-# 13. 采购申请（新路由）
-echo ""
-echo "【13. 采购申请测试】"
-curl -s -X GET "$API_URL/purchase-requests?page=1&pageSize=5" \
-  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool 2>/dev/null | head -20
+AUTH_HEADER="Authorization: Bearer $TOKEN"
 
 echo ""
-echo "========================================="
-echo "  测试完成！"
-echo "========================================="
+echo "=== RECEIVABLES ==="
+curl -s http://localhost:3000/api/receivables -H "$AUTH_HEADER" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+if d.get('success'):
+    lst=d['data'].get('list',[])
+    print(f'OK - total in list: {len(lst)}, total field: {d[\"data\"].get(\"total\",0)}')
+    for c in lst[:3]:
+        print(f'  [{c[\"id\"]}] {c.get(\"partner_name\",\"\")} amount={c.get(\"amount\",\"\")} status={c.get(\"status\",\"\")}')
+else:
+    print('FAIL:', d.get('error','unknown'))
+"
+
+echo ""
+echo "=== INVOICES ==="
+curl -s http://localhost:3000/api/invoices -H "$AUTH_HEADER" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+if d.get('success'):
+    lst=d['data'].get('list',[])
+    print(f'OK - total: {len(lst)}')
+    for c in lst[:3]:
+        print(f'  [{c[\"id\"]}] {c.get(\"invoice_no\",\"\")} amount={c.get(\"total_amount\",\"\")} status={c.get(\"status\",\"\")}')
+else:
+    print('FAIL:', d.get('error','unknown'))
+"
+
+echo ""
+echo "=== EMPLOYEES ==="
+curl -s http://localhost:3000/api/employees -H "$AUTH_HEADER" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+if d.get('success'):
+    lst=d['data'].get('list',[])
+    print(f'OK - total: {len(lst)}')
+    for c in lst[:3]:
+        print(f'  [{c[\"id\"]}] {c.get(\"name\",\"\")} dept={c.get(\"department\",\"\")}')
+else:
+    print('FAIL:', d.get('error','unknown'))
+"
+
+echo ""
+echo "=== SALARIES ==="
+curl -s http://localhost:3000/api/salaries -H "$AUTH_HEADER" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+if d.get('success'):
+    lst=d['data'].get('list',[])
+    print(f'OK - total: {len(lst)}')
+else:
+    print('FAIL:', d.get('error','unknown'))
+"
+
+echo ""
+echo "=== ATTENDANCE ==="
+curl -s http://localhost:3000/api/attendance -H "$AUTH_HEADER" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+if d.get('success'):
+    lst=d['data'].get('list',[])
+    print(f'OK - total: {len(lst)}')
+else:
+    print('FAIL:', d.get('error','unknown'))
+"
+
+echo ""
+echo "=== CONTRACTS ==="
+curl -s http://localhost:3000/api/contracts -H "$AUTH_HEADER" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+if d.get('success'):
+    lst=d['data'].get('list',[])
+    print(f'OK - total: {len(lst)}')
+    for c in lst[:5]:
+        print(f'  [{c[\"id\"]}] {c.get(\"contract_no\",\"\")} status={c.get(\"status\",\"\")} review={c.get(\"review_status\",\"\")}')
+else:
+    print('FAIL:', d.get('error','unknown'))
+"
+
+echo ""
+echo "=== DASHBOARD OVERVIEW ==="
+curl -s http://localhost:3000/api/dashboard/overview -H "$AUTH_HEADER" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+if d.get('success'):
+    data=d['data']
+    print('OK')
+    print('  Income:', data.get('incomeExpense',{}).get('income'))
+    print('  Expense:', data.get('incomeExpense',{}).get('expense'))
+    print('  Receivable:', data.get('receivablesPayables',{}).get('receivable'))
+    print('  Payable:', data.get('receivablesPayables',{}).get('payable'))
+else:
+    print('FAIL:', d.get('error','unknown'))
+"
+
+echo ""
+echo "=== QQBOT STATUS ==="
+curl -s http://localhost:3000/api/qqbot -H "$AUTH_HEADER" | head -c 200
+
+echo ""
+echo "=== SETTINGS ==="
+curl -s http://localhost:3000/api/settings -H "$AUTH_HEADER" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+if d.get('success'):
+    print('OK - keys:', list(d['data'].keys()))
+else:
+    print('FAIL:', d.get('error','unknown'))
+"
+
+echo ""
+echo "=== POST /api/contracts/18/review ==="
+curl -s -X POST http://localhost:3000/api/contracts/18/review -H "$AUTH_HEADER" -H "Content-Type: application/json" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+print('OK' if d.get('success') else 'FAIL', d.get('message','')[:100])
+"

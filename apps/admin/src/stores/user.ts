@@ -44,8 +44,8 @@ export const useUserStore = defineStore('user', () => {
         password 
       })
       
-      // API 返回 { success: true, data: { user, token } }
-      const result = (response as any).data || response
+      // API 返回 { success: true, data: { user, token } }，拦截器已解包 data
+      const result = response as any
       
       // 保存 token
       token.value = result.token

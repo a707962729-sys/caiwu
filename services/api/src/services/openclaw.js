@@ -1,23 +1,21 @@
 /**
- * OpenClaw 集成服务
+ * OpenClaw 集成服务（已解耦）
  * 提供 AI 能力的深度集成
+ * 已移除对 OpenClaw 的依赖，改为调用本地 caiwu-ai 服务
  */
 
 const path = require('path');
 
-// OpenClaw 配置
-const OPENCLAW_CONFIG = {
-  // Gateway 地址
-  gatewayUrl: process.env.OPENCLAW_GATEWAY_URL || 'http://localhost:18789',
-  
-  // 默认模型
-  defaultModel: process.env.OPENCLAW_MODEL || 'qwen-cn/glm-5',
-  
+// 本地 AI 服务配置
+const AI_SERVICE_CONFIG = {
+  // AI 服务地址
+  aiServiceUrl: process.env.AI_SERVICE_URL || 'http://localhost:3001',
+
   // 超时设置
-  timeout: parseInt(process.env.OPENCLAW_TIMEOUT) || 30000,
-  
+  timeout: parseInt(process.env.AI_SERVICE_TIMEOUT) || 30000,
+
   // 是否启用 AI 功能
-  enabled: process.env.OPENCLAW_ENABLED !== 'false'
+  enabled: process.env.AI_SERVICE_ENABLED !== 'false'
 };
 
 /**
@@ -25,7 +23,7 @@ const OPENCLAW_CONFIG = {
  */
 class OpenClawService {
   constructor() {
-    this.config = OPENCLAW_CONFIG;
+    this.config = AI_SERVICE_CONFIG;
     this.initialized = false;
     this.db = null;
   }
@@ -39,23 +37,23 @@ class OpenClawService {
 
   /**
    * 初始化服务
+   * 检查本地 AI 服务是否可用
    */
   async init() {
     if (this.initialized) return;
-    
+
     try {
-      // 检查 Gateway 是否可用
-      const response = await fetch(`${this.config.gatewayUrl}/health`, {
+      const response = await fetch(`${this.config.aiServiceUrl}/health`, {
         method: 'GET',
         signal: AbortSignal.timeout(5000)
       });
-      
+
       if (response.ok) {
-        console.log('✅ OpenClaw Gateway connected');
+        console.log('✅ caiwu-ai service connected');
         this.initialized = true;
       }
     } catch (error) {
-      console.warn('⚠️ OpenClaw Gateway not available, AI features will use local processing');
+      console.warn('⚠️ caiwu-ai service not available, AI features will use local processing');
       this.initialized = false;
     }
   }
@@ -371,20 +369,19 @@ class OpenClawService {
    */
   async healthCheck() {
     try {
-      const response = await fetch(`${this.config.gatewayUrl}/health`, {
+      const response = await fetch(`${this.config.aiServiceUrl}/health`, {
         method: 'GET',
         signal: AbortSignal.timeout(5000)
       });
-      
+
       return {
         status: response.ok ? 'healthy' : 'unhealthy',
-        gateway: this.config.gatewayUrl,
-        model: this.config.defaultModel
+        aiServiceUrl: this.config.aiServiceUrl
       };
     } catch (error) {
       return {
         status: 'unavailable',
-        gateway: this.config.gatewayUrl,
+        aiServiceUrl: this.config.aiServiceUrl,
         error: error.message
       };
     }
@@ -397,5 +394,5 @@ const openclawService = new OpenClawService();
 module.exports = {
   OpenClawService,
   openclawService,
-  OPENCLAW_CONFIG
+  AI_SERVICE_CONFIG
 };

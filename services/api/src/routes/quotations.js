@@ -5,22 +5,36 @@ const { getDatabaseCompat } = require('../database');
 const { authMiddleware, permissionMiddleware } = require('../middleware/auth');
 const { ErrorTypes, asyncHandler } = require('../middleware/error');
 
+// Simple mutex lock to prevent race condition in quotation number generation
+let quotationLock = Promise.resolve();
+function acquireQuotationLock() {
+  let release;
+  const p = new Promise(resolve => { release = resolve; });
+  quotationLock = quotationLock.then(() => p).catch(() => p);
+  return release;
+}
+
 router.use(authMiddleware);
 
-function generateQuotationNo(companyId) {
-  const db = getDatabaseCompat();
-  const today = dayjs().format('YYYYMMDD');
-  const prefix = `QT${today}`;
-  const result = db.prepare(`
-    SELECT MAX(number) as max_no FROM quotations 
-    WHERE company_id = ? AND number LIKE ?
-  `).get(companyId, `${prefix}%`);
-  let seq = 1;
-  if (result && result.max_no) {
-    seq = parseInt(result.max_no.slice(-4)) + 1;
-  }
-  return `${prefix}${seq.toString().padStart(4, '0')}`;
-}
+/**
+ * @route   GET /api/quotations/info
+ * @desc    获取报价单端点信息
+ */
+router.get('/info',
+  asyncHandler(async (req, res) => {
+    res.json({
+      success: true,
+      data: {
+        endpoints: [
+          { path: '/', method: 'GET', desc: '获取报价单列表' },
+          { path: '/', method: 'POST', desc: '创建报价单' },
+          { path: '/:id/convert', method: 'POST', desc: '转为订单' }
+        ]
+      }
+    });
+  })
+);
+
 
 // 获取报价单列表
 router.get('/', permissionMiddleware('sales', 'read'), asyncHandler(async (req, res) => {
@@ -45,17 +59,33 @@ router.get('/', permissionMiddleware('sales', 'read'), asyncHandler(async (req, 
 
 // 创建报价单
 router.post('/', permissionMiddleware('sales', 'write'), asyncHandler(async (req, res) => {
-  const db = getDatabaseCompat();
   const companyId = req.user.companyId;
-  const quotationNo = generateQuotationNo(companyId);
-  
-  const result = db.prepare(`
-    INSERT INTO quotations (company_id, number, customer_id, amount, status, valid_until, created_by)
-    VALUES (?, ?, ?, ?, 'draft', ?, ?)
-  `).run(companyId, quotationNo, req.body.customer_id, req.body.amount || 0, 
-    req.body.valid_until || dayjs().add(30, 'day').format('YYYY-MM-DD'), req.user.id);
-  
-  res.json({ success: true, data: { id: result.lastInsertRowid, number: quotationNo } });
+
+  // Acquire lock to ensure read-max + insert is atomic (prevents race condition)
+  const release = await acquireQuotationLock();
+  try {
+    const db = getDatabaseCompat();
+    const today = dayjs().format('YYYYMMDD');
+    const prefix = `QT${today}`;
+    const result = db.prepare(`
+      SELECT MAX(number) as max_no FROM quotations
+      WHERE company_id = ? AND number LIKE ?
+    `).get(companyId, `${prefix}%`);
+    let seq = 1;
+    if (result && result.max_no) {
+      seq = parseInt(result.max_no.slice(-4)) + 1;
+    }
+    const quotationNo = `${prefix}${seq.toString().padStart(4, '0')}`;
+    const insertResult = db.prepare(`
+      INSERT INTO quotations (company_id, number, customer_id, amount, status, valid_until, created_by)
+      VALUES (?, ?, ?, ?, 'draft', ?, ?)
+    `).run(companyId, quotationNo, req.body.customer_id, req.body.amount || 0,
+      req.body.valid_until || dayjs().add(30, 'day').format('YYYY-MM-DD'), req.user.id);
+
+    res.json({ success: true, data: { id: insertResult.lastInsertRowid, number: quotationNo } });
+  } finally {
+    release();
+  }
 }));
 
 // 转为订单

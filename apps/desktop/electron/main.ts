@@ -2,23 +2,44 @@ import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import type http from 'http'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // 主窗口引用
 let mainWindow: BrowserWindow | null = null
-// API 服务器实例
-let apiServer: { stop?: () => void } | null = null
+
+// API 服务器实例（Node.js http.Server）
+let apiServer: http.Server | null = null
 
 // 判断是否开发环境
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 
-// 获取 API 端口
-const API_PORT = parseInt(process.env.CAIWU_API_PORT || '3000')
+// 获取 API 端口（生产默认 3001，开发默认 3000）
+const API_PORT = parseInt(process.env.CAIWU_API_PORT || (isDev ? '3000' : '3001'))
 
-// 启动 API 服务（直接 require，使用 Electron 内置的 Node.js 运行时）
-async function startApiServer(): Promise<number> {
-  return new Promise((resolve, reject) => {
+// 检查 API 服务是否已经在运行
+function isApiServerRunning(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const http = require('http')
+    const req = http.get(`http://localhost:${API_PORT}/api/health`, { timeout: 2000 }, (res: any) => {
+      resolve(res.statusCode === 200 || res.statusCode === 401) // 401 means running but not authenticated
+    })
+    req.on('error', () => resolve(false))
+    req.on('timeout', () => { req.destroy(); resolve(false) })
+  })
+}
+
+// 启动 API 服务
+async function startApiServer(): Promise<void> {
+  // 先检查是否已经运行
+  const running = await isApiServerRunning()
+  if (running) {
+    console.log(`API server already running on port ${API_PORT}, skipping start`)
+    return
+  }
+
+  return new Promise(async (resolve, reject) => {
     try {
       const dbPath = isDev
         ? path.join(__dirname, '../../../data/caiwu.db')
@@ -36,41 +57,80 @@ async function startApiServer(): Promise<number> {
       process.env.DATABASE_PATH = dbPath
       process.env.NODE_ENV = 'production'
 
-      console.log('Starting API server...')
-      console.log('DB path:', dbPath)
+      console.log('[Caiwu Desktop] Starting API server...')
+      console.log('[Caiwu Desktop] DB path:', dbPath)
+      console.log('[Caiwu Desktop] API port:', API_PORT)
 
-      // 动态 require API 入口
+      // API 入口路径
       const apiPath = isDev
         ? path.join(__dirname, '../../../services/api/src/index.js')
         : path.join(process.resourcesPath, 'api/src/index.js')
 
-      console.log('API path:', apiPath)
+      console.log('[Caiwu Desktop] API path:', apiPath)
 
       // 清除缓存确保重新加载
-      delete require.cache[require.resolve(apiPath)]
+      const resolvedApi = require.resolve(apiPath)
+      delete require.cache[resolvedApi]
 
-      const { startServer } = require(apiPath)
+      // 动态加载 API 模块
+      // API 服务会调用 app.listen()，我们劫持它来获取 server 实例
+      const apiModule = require(resolvedApi)
+      const apiApp = apiModule.app
 
-      // 启动服务器
-      startServer().then(() => {
-        console.log(`API server started on port ${API_PORT}`)
-        resolve(API_PORT)
-      }).catch((err: Error) => {
-        console.error('Failed to start API server:', err)
+      // 启动 HTTP 服务器，劫持 server 实例
+      const server = apiApp.listen(API_PORT, () => {
+        console.log(`[Caiwu Desktop] API server started on port ${API_PORT}`)
+        resolve()
+      })
+
+      if (!server) {
+        reject(new Error('Failed to create HTTP server'))
+        return
+      }
+
+      apiServer = server
+      server.on('error', (err: NodeJS.ErrnoException) => {
+        console.error('[Caiwu Desktop] API server error:', err)
         reject(err)
       })
 
     } catch (err) {
-      console.error('Failed to load API module:', err)
+      console.error('[Caiwu Desktop] Failed to load API module:', err)
       reject(err)
     }
   })
 }
 
 // 停止 API 服务
-function stopApiServer() {
-  console.log('Stopping API server...')
-  apiServer = null
+async function stopApiServer(): Promise<void> {
+  return new Promise((resolve) => {
+    if (!apiServer) {
+      console.log('[Caiwu Desktop] No API server to stop')
+      resolve()
+      return
+    }
+
+    console.log('[Caiwu Desktop] Stopping API server...')
+    apiServer.close((err) => {
+      if (err) {
+        console.error('[Caiwu Desktop] Error stopping API server:', err)
+      } else {
+        console.log('[Caiwu Desktop] API server stopped')
+      }
+      apiServer = null
+      resolve()
+    })
+
+    // 超时保护
+    setTimeout(() => {
+      if (apiServer) {
+        console.warn('[Caiwu Desktop] API server stop timeout, forcing close')
+        apiServer.close()
+        apiServer = null
+      }
+      resolve()
+    }, 5000)
+  })
 }
 
 // 创建主窗口
@@ -136,15 +196,21 @@ ipcMain.on('window-close', () => {
 
 // 应用就绪
 app.whenReady().then(async () => {
-  try {
-    // 启动 API 服务
-    await startApiServer()
-    console.log(`API server started on port ${API_PORT}`)
-  } catch (err) {
-    console.error('Failed to start API server:', err)
-    dialog.showErrorBox('启动失败', 'API 服务启动失败，应用可能无法正常工作。')
+  console.log('[Caiwu Desktop] App ready, starting...')
+
+  // 生产模式：自动启动 API 服务
+  // 开发模式：若未设置 SKIP_BUILTIN_API 也启动
+  const shouldStartApi = !isDev || (isDev && process.env.SKIP_BUILTIN_API !== 'true')
+
+  if (shouldStartApi) {
+    try {
+      await startApiServer()
+    } catch (err) {
+      console.error('[Caiwu Desktop] Failed to start API server:', err)
+      dialog.showErrorBox('启动失败', 'API 服务启动失败，应用可能无法正常工作。')
+    }
   }
-  
+
   createWindow()
 
   app.on('activate', () => {
@@ -159,17 +225,22 @@ app.whenReady().then(async () => {
   }
 })
 
-// 所有窗口关闭时退出
-app.on('window-all-closed', () => {
-  stopApiServer()
+// 所有窗口关闭时退出（macOS 除外）
+app.on('window-all-closed', async () => {
+  console.log('[Caiwu Desktop] All windows closed')
+  await stopApiServer()
   if (process.platform !== 'darwin') {
     app.quit()
   }
 })
 
 // 应用退出前清理
-app.on('before-quit', () => {
-  stopApiServer()
+app.on('before-quit', async (e) => {
+  console.log('[Caiwu Desktop] App quitting...')
+  // 阻止立即退出，等待服务停止
+  e.preventDefault()
+  await stopApiServer()
+  app.exit(0)
 })
 
 // 自动更新事件

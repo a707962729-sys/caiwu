@@ -41,7 +41,7 @@ router.get('/',
       params.push(role);
     }
     
-    if (status) {
+    if (status !== undefined && status !== '' && status !== null) {
       whereClause += ' AND u.status = ?';
       params.push(status);
     }
@@ -176,9 +176,9 @@ router.post('/',
     
     // 创建用户
     const result = db.prepare(`
-      INSERT INTO users (username, password_hash, real_name, email, phone, role, company_id, department, position, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(username, passwordHash, real_name, email || null, phone || null, role, company_id || req.user.companyId, department || null, position || null, req.user.id);
+      INSERT INTO users (username, password_hash, real_name, email, phone, role, company_id, department, position)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(username, passwordHash, real_name, email || null, phone || null, role, company_id || req.user.companyId, department || null, position || null);
     
     const newUser = db.prepare(`
       SELECT u.id, u.username, u.real_name, u.email, u.phone, u.role,
@@ -226,7 +226,7 @@ router.put('/:id',
     const values = [];
     
     const allowedFields = isBoss 
-      ? ['real_name', 'email', 'phone', 'department', 'position', 'status']
+      ? ['real_name', 'email', 'phone', 'department', 'position', 'status', 'role']
       : ['real_name', 'email', 'phone', 'department', 'position'];
     
     for (const [key, value] of Object.entries(req.body)) {

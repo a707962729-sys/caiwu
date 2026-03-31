@@ -13,8 +13,8 @@
         :default-active="activeMenu"
         :collapse="isCollapse"
         :collapse-transition="false"
-        router
         class="sidebar-menu"
+        @select="handleMenuSelect"
       >
         <el-menu-item index="/dashboard">
           <el-icon><DataAnalysis /></el-icon>
@@ -68,6 +68,26 @@
           <el-icon><Setting /></el-icon>
           <template #title>用户管理</template>
         </el-menu-item>
+
+        <el-sub-menu index="hr">
+          <template #title>
+            <el-icon><UserFilled /></el-icon>
+            <span>人事管理</span>
+          </template>
+          <el-menu-item index="/employees">员工管理</el-menu-item>
+          <el-menu-item index="/attendance">考勤管理</el-menu-item>
+          <el-menu-item index="/salary">工资管理</el-menu-item>
+        </el-sub-menu>
+
+        <el-sub-menu index="system">
+          <template #title>
+            <el-icon><Setting /></el-icon>
+            <span>系统设置</span>
+          </template>
+          <el-menu-item index="/settings">基础设置</el-menu-item>
+          <el-menu-item index="/settings?tab=qqbot">QQ机器人</el-menu-item>
+          <el-menu-item index="/launcher">服务管理器</el-menu-item>
+        </el-sub-menu>
       </el-menu>
     </el-aside>
 
@@ -126,6 +146,9 @@
         </router-view>
       </el-main>
     </el-container>
+
+    <!-- AI 聊天助手 -->
+    <AiChatWidget />
   </el-container>
 </template>
 
@@ -134,15 +157,18 @@ import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import { 
-  Wallet, DataAnalysis, List, Document, User, Avatar, Money, 
+  Wallet, DataAnalysis, List, Document, User, Avatar, Money,
   Tickets, TrendCharts, Setting, ArrowDown, SwitchButton,
-  Expand, Fold, ShoppingCart
+  Expand, Fold, ShoppingCart, UserFilled, Clock
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
+import AiChatWidget from '@/components/AiChatWidget.vue'
+import { useSafeNavigate } from '@/composables/useNavigation'
 
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
+const { safeNavigate } = useSafeNavigate()
 
 // 侧边栏折叠状态
 const isCollapse = ref(false)
@@ -157,14 +183,23 @@ const currentTitle = computed(() => route.meta.title as string || '首页')
 const userName = computed(() => userStore.userName)
 const userAvatar = computed(() => userStore.user?.avatar || '')
 
+// 防抖导航函数 - 使用全局导航锁
+const handleMenuSelect = (index: string) => {
+  // 防止在同一路由快速点击
+  if (index === route.path) return
+  
+  // 使用安全的导航（内部已有防抖）
+  safeNavigate(index)
+}
+
 // 处理下拉菜单命令
 async function handleCommand(command: string) {
   switch (command) {
     case 'profile':
-      router.push('/profile')
+      safeNavigate('/profile')
       break
     case 'settings':
-      router.push('/settings')
+      safeNavigate('/settings')
       break
     case 'logout':
       try {
@@ -174,7 +209,7 @@ async function handleCommand(command: string) {
           type: 'warning'
         })
         await userStore.logout()
-        router.push('/login')
+        safeNavigate('/login')
       } catch {
         // 取消退出
       }
@@ -193,7 +228,10 @@ async function handleCommand(command: string) {
 .sidebar {
   background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
   transition: width 0.3s;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
+  height: 100%;
 }
 
 .sidebar-header {
@@ -227,6 +265,24 @@ async function handleCommand(command: string) {
 .sidebar-menu {
   background: transparent;
   border: none;
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  
+  // 美化滚动条
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+  }
   
   :deep(.el-menu-item),
   :deep(.el-sub-menu__title) {
@@ -235,6 +291,13 @@ async function handleCommand(command: string) {
     &:hover {
       background: rgba(255, 255, 255, 0.1);
       color: #fff;
+    }
+    
+    // 导航锁定时的禁用样式
+    &.is-disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      pointer-events: none;
     }
   }
   
@@ -267,6 +330,12 @@ async function handleCommand(command: string) {
       background: linear-gradient(90deg, rgba(102, 126, 234, 0.2) 0%, transparent 100%);
       color: #667eea;
       border-left: none;
+    }
+    
+    &.is-disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      pointer-events: none;
     }
   }
 }
