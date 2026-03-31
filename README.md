@@ -1,66 +1,90 @@
-# 财务管家
+# 财务管理系统
 
-企业财务管理系统，支持记账、合同、订单、报销、票据等功能。
+基于 AI 的智能财务管理系统，支持发票管理、劳动合同自动录入、工资计算等功能。
 
-## 项目结构
+## 功能特点
 
-```
-caiwu/
-├── database/              # 数据库
-│   └── schema.sql         # 数据库表结构
-├── services/
-│   └── api/               # API 服务
-│       ├── src/
-│       │   ├── config/    # 配置
-│       │   ├── database/  # 数据库连接
-│       │   ├── middleware/# 中间件
-│       │   └── routes/    # 路由
-│       └── package.json
-├── docs/
-│   └── api.md             # API 文档
-└── uploads/               # 上传文件目录
-```
+- 📊 **发票管理**：发票识别、审核、作废
+- 📝 **劳动合同**：通过 QQ 机器人自动录入员工信息
+- 💰 **工资管理**：自动计算试用期/正式期工资
+- 🤖 **AI 助手**：智能合同审查、报销审核
+- 📱 **多端支持**：支持桌面端访问
 
-## 快速开始
+## 系统要求
 
-### 安装
+- macOS 10.15+
+- Node.js 18+
+- npm 8+
+
+## 安装步骤
+
+### 1. 克隆代码
 
 ```bash
-cd services/api
+git clone https://github.com/a707962729-sys/caiwu.git
+cd caiwu
+```
+
+### 2. 安装依赖
+
+```bash
 npm install
 ```
 
-### 配置
+### 3. 启动服务
 
 ```bash
-cp .env.example .env
-# 编辑 .env 配置 JWT_SECRET 等
+./start.sh
 ```
 
-### 初始化数据库
+服务启动后自动打开浏览器访问后台：
+- 后台管理：http://localhost:5174
+- API 服务：http://localhost:3000
+- AI 服务：http://localhost:3001
+
+## 创建桌面快捷方式
+
+安装完成后，运行以下命令创建桌面快捷方式：
 
 ```bash
-npm run init-db
+./create-desktop-shortcut.sh
 ```
 
-### 启动
+或在 Finder 中双击 `财务管理统.app` 启动。
 
-```bash
-npm run dev
+## 默认账号
+
+- 用户名：`admin`
+- 密码：`admin123`
+
+## QQ 机器人
+
+1. 添加 QQ 机器人为好友
+2. 发送合同文件（PDF/Word）自动识别员工信息
+3. 发送「发票」相关文件自动录入发票信息
+
+## 目录结构
+
+```
+caiwu/
+├── apps/
+│   └── admin/          # 前端管理后台
+├── services/
+│   ├── api/            # API 服务
+│   ├── ai/             # AI 服务
+│   └── ...
+├── data/              # 数据库文件
+└── logs/               # 日志文件
 ```
 
-## 功能模块
+## 常见问题
 
-- 用户管理（角色：老板、会计、员工）
-- 记账管理
-- 合同管理
-- 订单管理
-- 报销管理
-- 票据管理
-- 应收应付
-- AI 辅助
-- 数据分析
+**Q: 启动报错 "port already in use"**
+A: 可能端口被占用，执行 `./stop.sh` 再重新启动
 
-## API 文档
+**Q: AI 服务无法连接**
+A: 确保 AI 服务已启动，查看 `logs/ai.log` 排查问题
 
-详见 [docs/api.md](docs/api.md)
+## License
+
+MIT
